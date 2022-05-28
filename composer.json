@@ -1,6 +1,5 @@
 {
     "name": "localzet/channel",
-    "version": "v1.0.0",
     "description": "PHP Inter-server channel",
     "type": "library",
     "keywords": [
@@ -26,6 +25,5 @@
         "psr-4": {
             "localzet\\Channel\\": "./src"
         }
-    },
-    "minimum-stability": "stable"
+    }
 }
