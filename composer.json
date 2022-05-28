@@ -26,5 +26,6 @@
         "psr-4": {
             "localzet\\Channel\\": "./src"
         }
-    }
+    },
+    "minimum-stability": "stable"
 }
