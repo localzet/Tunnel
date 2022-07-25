@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * @version     1.0.0-dev
+ * @package     WebChannel Client
+ * @link        https://localzet.gitbook.io
+ * 
+ * @author      localzet <creator@localzet.ru>
+ * 
+ * @copyright   Copyright (c) 2018-2020 Zorin Projects 
+ * @copyright   Copyright (c) 2020-2022 NONA Team
+ * 
+ * @license     https://www.localzet.ru/license GNU GPLv3 License
+ */
+
 namespace localzet\Channel;
 
 use localzet\Core\Connection\AsyncTcpConnection;
@@ -13,17 +26,17 @@ use localzet\Core\Protocols\Frame;
 class Client
 {
     /**
-     * @var callback
+     * @var callable
      */
     public static $onMessage = null;
 
     /**
-     * @var callback
+     * @var callable
      */
     public static $onConnect = null;
 
     /**
-     * @var callback
+     * @var callable
      */
     public static $onClose = null;
 
@@ -89,7 +102,6 @@ class Client
             self::$_isCoreEnv = false;
         }
 
-        // For core environment.
         if (self::$_isCoreEnv) {
             if (strpos($ip, 'unix://') === false) {
                 $conn = new AsyncTcpConnection('frame://' . self::$_remoteIp . ':' . self::$_remotePort);
@@ -106,7 +118,6 @@ class Client
             if (empty(self::$_pingTimer)) {
                 self::$_pingTimer = Timer::add(self::$pingInterval, 'localzet\Channel\Client::ping');
             }
-            // Not core environment.
         } else {
             $remote = strpos($ip, 'unix://') === false ? 'tcp://' . self::$_remoteIp . ':' . self::$_remotePort : $ip;
             $conn = stream_socket_client($remote, $code, $message, 5);
@@ -138,13 +149,13 @@ class Client
             } elseif (!empty(Client::$onMessage)) {
                 call_user_func(Client::$onMessage, $event, $event_data);
             } else {
-                throw new \Exception("event:$event have not callback");
+                throw new \Exception("event:$event не является функцией");
             }
         } else {
             if (isset(self::$_queues[$event])) {
                 call_user_func(self::$_queues[$event], $event_data);
             } else {
-                throw new \Exception("queue:$event have not callback");
+                throw new \Exception("queue:$event не является функцией");
             }
         }
     }
@@ -164,7 +175,7 @@ class Client
      */
     public static function onRemoteClose()
     {
-        echo "Waring channel connection closed and try to reconnect\n";
+        echo "Предупреждение канала: Соединение закрыто, попытка переподключения\n";
         self::$_remoteConnection = null;
         self::clearTimer();
         self::$_reconnectTimer = Timer::add(1, 'localzet\Channel\Client::connect', array(self::$_remoteIp, self::$_remotePort));
@@ -195,7 +206,7 @@ class Client
     public static function clearTimer()
     {
         if (!self::$_isCoreEnv) {
-            throw new \Exception('localzet\\Channel\\Client not support clearTimer method when it is not in the core environment.');
+            throw new \Exception('localzet\\Channel\\Client не поддерживает метод clearTimer без WebCore.');
         }
         if (self::$_reconnectTimer) {
             Timer::del(self::$_reconnectTimer);
@@ -211,7 +222,7 @@ class Client
     public static function on($event, $callback)
     {
         if (!is_callable($callback)) {
-            throw new \Exception('callback is not callable for event.');
+            throw new \Exception('Callback не поддается вызову для события.');
         }
         self::$_events[$event] = $callback;
         self::subscribe($event);
@@ -263,7 +274,7 @@ class Client
     public static function watch($channels, $callback, $autoReserve = true)
     {
         if (!is_callable($callback)) {
-            throw new \Exception('callback is not callable for watch.');
+            throw new \Exception('Callback не поддается вызову для наблюдения.');
         }
 
         if ($autoReserve) {
@@ -332,7 +343,7 @@ class Client
     protected static function send($data)
     {
         if (!self::$_isCoreEnv) {
-            throw new \Exception("localzet\\Channel\\Client not support {$data['type']} method when it is not in the core environment.");
+            throw new \Exception("localzet\\Channel\\Client не поддерживает метод {$data['type']} без WebCore.");
         }
         self::connect(self::$_remoteIp, self::$_remotePort);
         self::$_remoteConnection->send(serialize($data));
