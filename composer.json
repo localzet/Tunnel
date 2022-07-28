@@ -1,6 +1,6 @@
 {
     "name": "localzet/channel",
-    "description": "WebChannel",
+    "description": "WebChannel Library",
     "type": "library",
     "keywords": [
         "localzet"
