@@ -1,7 +1,6 @@
 <?php
 
 /**
- * @version     1.0.0-dev
  * @package     WebChannel Queue
  * @link        https://localzet.gitbook.io
  * 

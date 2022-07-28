@@ -1,7 +1,6 @@
 <?php
 
 /**
- * @version     1.0.0-dev
  * @package     WebChannel Client
  * @link        https://localzet.gitbook.io
  * 
@@ -21,7 +20,6 @@ use localzet\Core\Protocols\Frame;
 
 /**
  * Channel/Client
- * @version 1.0.7
  */
 class Client
 {
