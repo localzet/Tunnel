@@ -1,25 +1,39 @@
 <?php
+declare(strict_types=1);
 
 /**
- * @package     WebChannel Client
- * @link        https://localzet.gitbook.io
- * 
- * @author      localzet <creator@localzet.ru>
- * 
- * @copyright   Copyright (c) 2018-2020 Zorin Projects 
- * @copyright   Copyright (c) 2020-2022 NONA Team
- * 
- * @license     https://www.localzet.ru/license GNU GPLv3 License
+ * @package     Localzet Tunnel
+ * @link        https://github.com/localzet/Tunnel
+ *
+ * @author      Ivan Zorin <creator@localzet.com>
+ * @copyright   Copyright (c) 2018-2023 Localzet Group
+ * @license     GNU Affero General Public License, version 3
+ *
+ *              This program is free software: you can redistribute it and/or modify
+ *              it under the terms of the GNU Affero General Public License as
+ *              published by the Free Software Foundation, either version 3 of the
+ *              License, or (at your option) any later version.
+ *
+ *              This program is distributed in the hope that it will be useful,
+ *              but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *              MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *              GNU Affero General Public License for more details.
+ *
+ *              You should have received a copy of the GNU Affero General Public License
+ *              along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-namespace localzet\Channel;
+namespace localzet\Tunnel;
 
-use localzet\Core\Connection\AsyncTcpConnection;
-use localzet\Core\Timer;
-use localzet\Core\Protocols\Frame;
+use Exception;
+use localzet\Server\Connection\AsyncTcpConnection;
+use localzet\Server\Connection\TcpConnection;
+use localzet\Server\Protocols\Frame;
+use localzet\Timer;
+use Throwable;
 
 /**
- * Channel/Client
+ * Tunnel\Client
  */
 class Client
 {
@@ -39,55 +53,56 @@ class Client
     public static $onClose = null;
 
     /**
-     * @var \localzet\Core\Connection\TcpConnection
+     * @var TcpConnection|resource|null
      */
     protected static $_remoteConnection = null;
 
     /**
-     * @var string
+     * @var string|null
      */
-    protected static $_remoteIp = null;
+    protected static ?string $_remoteIp = null;
 
     /**
-     * @var int
+     * @var int|null
      */
-    protected static $_remotePort = null;
+    protected static ?int $_remotePort = null;
 
     /**
-     * @var Timer
+     * @var int|null
      */
-    protected static $_reconnectTimer = null;
+    protected static ?int $_reconnectTimer = null;
 
     /**
-     * @var Timer
+     * @var int|null
      */
-    protected static $_pingTimer = null;
+    protected static ?int $_pingTimer = null;
 
     /**
      * @var array
      */
-    protected static $_events = array();
+    protected static array $_events = array();
 
     /**
-     * @var callable
+     * @var callable[]
      */
-    protected static $_queues = array();
+    protected static array $_queues = array();
 
     /**
      * @var bool
      */
-    protected static $_isCoreEnv = true;
+    protected static bool $_isCoreEnv = true;
 
     /**
-     * @var int
+     * @var float
      */
-    public static $pingInterval = 25;
+    public static float $pingInterval = 25;
 
     /**
      * @param string $ip
      * @param int $port
+     * @throws Throwable
      */
-    public static function connect($ip = '127.0.0.1', $port = 2206)
+    public static function connect(string $ip = '127.0.0.1', int $port = 2206): void
     {
         if (self::$_remoteConnection) {
             return;
@@ -96,12 +111,12 @@ class Client
         self::$_remoteIp = $ip;
         self::$_remotePort = $port;
 
-        if (PHP_SAPI !== 'cli' || !class_exists('localzet\Core\Server', false)) {
+        if (PHP_SAPI !== 'cli' || !class_exists('localzet\Server', false)) {
             self::$_isCoreEnv = false;
         }
 
         if (self::$_isCoreEnv) {
-            if (strpos($ip, 'unix://') === false) {
+            if (!str_contains($ip, 'unix://')) {
                 $conn = new AsyncTcpConnection('frame://' . self::$_remoteIp . ':' . self::$_remotePort);
             } else {
                 $conn = new AsyncTcpConnection($ip);
@@ -114,13 +129,13 @@ class Client
             $conn->connect();
 
             if (empty(self::$_pingTimer)) {
-                self::$_pingTimer = Timer::add(self::$pingInterval, 'localzet\Channel\Client::ping');
+                self::$_pingTimer = Timer::add(self::$pingInterval, 'localzet\Tunnel\Client::ping');
             }
         } else {
-            $remote = strpos($ip, 'unix://') === false ? 'tcp://' . self::$_remoteIp . ':' . self::$_remotePort : $ip;
+            $remote = !str_contains($ip, 'unix://') ? 'tcp://' . self::$_remoteIp . ':' . self::$_remotePort : $ip;
             $conn = stream_socket_client($remote, $code, $message, 5);
             if (!$conn) {
-                throw new \Exception($message);
+                throw new Exception($message);
             }
         }
 
@@ -128,18 +143,16 @@ class Client
     }
 
     /**
-     * @param \localzet\Core\Connection\TcpConnection $connection
+     * @param TcpConnection $connection
      * @param string $data
-     * @throws \Exception
+     * @throws Exception
      */
-    public static function onRemoteMessage($connection, $data)
+    public static function onRemoteMessage(TcpConnection $connection, string $data): void
     {
         $data = unserialize($data);
         $type = $data['type'];
         $event = $data['channel'];
         $event_data = $data['data'];
-
-        $callback = null;
 
         if ($type == 'event') {
             if (!empty(self::$_events[$event])) {
@@ -147,36 +160,36 @@ class Client
             } elseif (!empty(Client::$onMessage)) {
                 call_user_func(Client::$onMessage, $event, $event_data);
             } else {
-                throw new \Exception("event:$event не является функцией");
+                throw new Exception("event:$event не является функцией");
             }
         } else {
             if (isset(self::$_queues[$event])) {
                 call_user_func(self::$_queues[$event], $event_data);
             } else {
-                throw new \Exception("queue:$event не является функцией");
+                throw new Exception("queue:$event не является функцией");
             }
         }
     }
 
     /**
      * @return void
+     * @throws Throwable
      */
-    public static function ping()
+    public static function ping(): void
     {
-        if (self::$_remoteConnection) {
-            self::$_remoteConnection->send('');
-        }
+        self::$_remoteConnection?->send('');
     }
 
     /**
      * @return void
+     * @throws Exception
      */
-    public static function onRemoteClose()
+    public static function onRemoteClose(): void
     {
         echo "Предупреждение канала: Соединение закрыто, попытка переподключения\n";
         self::$_remoteConnection = null;
         self::clearTimer();
-        self::$_reconnectTimer = Timer::add(1, 'localzet\Channel\Client::connect', array(self::$_remoteIp, self::$_remotePort));
+        self::$_reconnectTimer = Timer::add(1, 'localzet\Tunnel\Client::connect', array(self::$_remoteIp, self::$_remotePort));
         if (self::$onClose) {
             call_user_func(Client::$onClose);
         }
@@ -184,8 +197,9 @@ class Client
 
     /**
      * @return void
+     * @throws Throwable
      */
-    public static function onRemoteConnect()
+    public static function onRemoteConnect(): void
     {
         $all_event_names = array_keys(self::$_events);
         if ($all_event_names) {
@@ -200,11 +214,12 @@ class Client
 
     /**
      * @return void
+     * @throws Exception
      */
-    public static function clearTimer()
+    public static function clearTimer(): void
     {
         if (!self::$_isCoreEnv) {
-            throw new \Exception('localzet\\Channel\\Client не поддерживает метод clearTimer без WebCore.');
+            throw new Exception('localzet\\Tunnel\\Client не поддерживает метод clearTimer без WebCore.');
         }
         if (self::$_reconnectTimer) {
             Timer::del(self::$_reconnectTimer);
@@ -215,12 +230,12 @@ class Client
     /**
      * @param string $event
      * @param callback $callback
-     * @throws \Exception
+     * @throws Throwable
      */
-    public static function on($event, $callback)
+    public static function on(string $event, callable $callback): void
     {
         if (!is_callable($callback)) {
-            throw new \Exception('Callback не поддается вызову для события.');
+            throw new Exception('Callback не поддается вызову для события.');
         }
         self::$_events[$event] = $callback;
         self::subscribe($event);
@@ -229,8 +244,9 @@ class Client
     /**
      * @param string|string[] $events
      * @return void
+     * @throws Throwable
      */
-    public static function subscribe($events)
+    public static function subscribe(array|string $events): void
     {
         $events = (array)$events;
         self::send(array('type' => 'subscribe', 'channels' => $events));
@@ -244,8 +260,9 @@ class Client
     /**
      * @param string|string[] $events
      * @return void
+     * @throws Throwable
      */
-    public static function unsubscribe($events)
+    public static function unsubscribe(array|string $events): void
     {
         $events = (array)$events;
         self::send(array('type' => 'unsubscribe', 'channels' => $events));
@@ -257,32 +274,29 @@ class Client
     /**
      * @param string|string[] $events
      * @param mixed $data
+     * @throws Throwable
      */
-    public static function publish($events, $data)
+    public static function publish(array|string $events, mixed $data): void
     {
         self::sendAnyway(array('type' => 'publish', 'channels' => (array)$events, 'data' => $data));
     }
 
     /**
-     * @param string|array $channels
+     * @param array|string $channels
      * @param callable $callback
      * @param boolean $autoReserve
-     * @throws \Exception
+     * @throws Throwable
      */
-    public static function watch($channels, $callback, $autoReserve = true)
+    public static function watch(array|string $channels, callable $callback, bool $autoReserve = true): void
     {
         if (!is_callable($callback)) {
-            throw new \Exception('Callback не поддается вызову для наблюдения.');
+            throw new Exception('Callback не поддается вызову для наблюдения.');
         }
 
         if ($autoReserve) {
             $callback = static function ($data) use ($callback) {
                 try {
                     call_user_func($callback, $data);
-                } catch (\Exception $e) {
-                    throw $e;
-                } catch (\Error $e) {
-                    throw $e;
                 } finally {
                     self::reserve();
                 }
@@ -303,9 +317,9 @@ class Client
 
     /**
      * @param string|string[] $channels
-     * @throws \Exception
+     * @throws Throwable
      */
-    public static function unwatch($channels)
+    public static function unwatch(array|string $channels): void
     {
         $channels = (array)$channels;
         self::send(array('type' => 'unwatch', 'channels' => $channels));
@@ -319,29 +333,29 @@ class Client
     /**
      * @param string|string[] $channels
      * @param mixed $data
-     * @throws \Exception
+     * @throws Throwable
      */
-    public static function enqueue($channels, $data)
+    public static function enqueue(array|string $channels, mixed $data): void
     {
         self::sendAnyway(array('type' => 'enqueue', 'channels' => (array)$channels, 'data' => $data));
     }
 
     /**
-     * @throws \Exception
+     * @throws Throwable
      */
-    public static function reserve()
+    public static function reserve(): void
     {
         self::send(array('type' => 'reserve'));
     }
 
     /**
      * @param $data
-     * @throws \Exception
+     * @throws Throwable
      */
-    protected static function send($data)
+    protected static function send($data): void
     {
         if (!self::$_isCoreEnv) {
-            throw new \Exception("localzet\\Channel\\Client не поддерживает метод {$data['type']} без WebCore.");
+            throw new Exception("localzet\\Tunnel\\Client не поддерживает метод {$data['type']} без WebCore.");
         }
         self::connect(self::$_remoteIp, self::$_remotePort);
         self::$_remoteConnection->send(serialize($data));
@@ -349,9 +363,9 @@ class Client
 
     /**
      * @param $data
-     * @throws \Exception
+     * @throws Throwable
      */
-    protected static function sendAnyway($data)
+    protected static function sendAnyway($data): void
     {
         self::connect(self::$_remoteIp, self::$_remotePort);
         $body = serialize($data);

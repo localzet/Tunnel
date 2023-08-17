@@ -1,54 +1,63 @@
 <?php
+declare(strict_types=1);
 
 /**
- * @package     WebChannel Server
- * @link        https://localzet.gitbook.io
- * 
- * @author      localzet <creator@localzet.ru>
- * 
- * @copyright   Copyright (c) 2018-2020 Zorin Projects 
- * @copyright   Copyright (c) 2020-2022 NONA Team
- * 
- * @license     https://www.localzet.ru/license GNU GPLv3 License
+ * @package     Localzet Tunnel
+ * @link        https://github.com/localzet/Tunnel
+ *
+ * @author      Ivan Zorin <creator@localzet.com>
+ * @copyright   Copyright (c) 2018-2023 Localzet Group
+ * @license     GNU Affero General Public License, version 3
+ *
+ *              This program is free software: you can redistribute it and/or modify
+ *              it under the terms of the GNU Affero General Public License as
+ *              published by the Free Software Foundation, either version 3 of the
+ *              License, or (at your option) any later version.
+ *
+ *              This program is distributed in the hope that it will be useful,
+ *              but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *              MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *              GNU Affero General Public License for more details.
+ *
+ *              You should have received a copy of the GNU Affero General Public License
+ *              along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-namespace localzet\Channel;
+namespace localzet\Tunnel;
 
-use localzet\Core\Protocols\Frame;
-use localzet\Core\Server as Core;
+use localzet\Server as Core;
+use localzet\Server\Connection\TcpConnection;
+use localzet\Server\Protocols\Frame;
 
 /**
- * Channel server.
+ * Tunnel\Server
  */
 class Server
 {
     /**
-     * @var Core
+     * @var Core|null
      */
-    protected $_core = null;
+    protected ?Core $_core = null;
 
     /**
      * @var Queue[]
      */
-    protected $_queues = array();
-
-    private $ip;
+    protected array $_queues = array();
 
     /**
      * @param string $ip
      * @param int $port
      */
-    public function __construct($ip = '0.0.0.0', $port = 2206)
+    public function __construct(string $ip = '0.0.0.0', int $port = 2206)
     {
-        if (strpos($ip, 'unix:') === false) {
+        if (!str_contains($ip, 'unix:')) {
             $core = new Core("frame://$ip:$port");
         } else {
             $core = new Core($ip);
             $core->protocol = Frame::class;
         }
-        $this->ip = $ip;
         $core->count = 1;
-        $core->name = 'ChannelServer';
+        $core->name = 'TunnelServer';
         $core->channels = array();
         $core->onMessage = array($this, 'onMessage');
         $core->onClose = array($this, 'onClose');
@@ -56,9 +65,10 @@ class Server
     }
 
     /**
+     * @param $connection
      * @return void
      */
-    public function onClose($connection)
+    public function onClose($connection): void
     {
         if (!empty($connection->channels)) {
             foreach ($connection->channels as $channel) {
@@ -82,10 +92,10 @@ class Server
     }
 
     /**
-     * @param \localzet\Core\Connection\TcpConnection $connection
+     * @param TcpConnection $connection
      * @param string $data
      */
-    public function onMessage($connection, $data)
+    public function onMessage(TcpConnection $connection, string $data): void
     {
         if (!$data) {
             return;
@@ -156,7 +166,11 @@ class Server
         }
     }
 
-    private function getQueue($channel)
+    /**
+     * @param $channel
+     * @return Queue
+     */
+    private function getQueue($channel): Queue
     {
         if (isset($this->_queues[$channel])) {
             return $this->_queues[$channel];
