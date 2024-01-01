@@ -6,7 +6,7 @@ declare(strict_types=1);
  * @link        https://github.com/localzet/Tunnel
  *
  * @author      Ivan Zorin <creator@localzet.com>
- * @copyright   Copyright (c) 2018-2023 Localzet Group
+ * @copyright   Copyright (c) 2018-2024 Localzet Group
  * @license     GNU Affero General Public License, version 3
  *
  *              This program is free software: you can redistribute it and/or modify
