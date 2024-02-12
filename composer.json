@@ -25,7 +25,7 @@
     "email": "support@localzet.com",
     "issues": "https://github.com/localzet/Tunnel/issues",
     "source": "https://github.com/localzet/Tunnel"
-},
+  },
   "require": {
     "php": "^8.2",
     "localzet/server": ">=4.0"
