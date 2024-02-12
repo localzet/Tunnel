@@ -1,9 +1,16 @@
 {
   "name": "localzet/tunnel",
-  "description": "Localzet Cross-Server Tunnel Library",
+  "description": "Localzet Tunnel is a cross-server tunnel library developed by Ivan Zorin. It provides functionality for creating secure tunnels between servers, facilitating efficient and secure cross-server communication.",
   "type": "library",
   "keywords": [
-    "localzet"
+    "tunnel",
+    "cross-server",
+    "communication",
+    "PHP",
+    "library",
+    "localzet",
+    "AGPL",
+    "server"
   ],
   "license": "AGPL-3.0-or-later",
   "authors": [
@@ -16,8 +23,9 @@
   ],
   "support": {
     "email": "support@localzet.com",
+    "issues": "https://github.com/localzet/Tunnel/issues",
     "source": "https://github.com/localzet/Tunnel"
-  },
+},
   "require": {
     "php": "^8.2",
     "localzet/server": ">=4.0"
