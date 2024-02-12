@@ -18,12 +18,6 @@
     "email": "support@localzet.com",
     "source": "https://github.com/localzet/Tunnel"
   },
-  "funding": [
-    {
-      "type": "other",
-      "url": "https://www.tinkoff.ru/cf/Ad5MBNhodod"
-    }
-  ],
   "require": {
     "php": "^8.2",
     "localzet/server": ">=4.0"
