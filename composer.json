@@ -28,7 +28,7 @@
   },
   "require": {
     "php": "^8.2",
-    "localzet/server": ">=4.0"
+    "localzet/server": "^4.1"
   },
   "autoload": {
     "psr-4": {
