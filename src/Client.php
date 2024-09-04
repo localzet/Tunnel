@@ -111,32 +111,20 @@ class Client
         self::$_remoteIp = $ip;
         self::$_remotePort = $port;
 
-        if (PHP_SAPI !== 'cli' || !class_exists('localzet\Server', false)) {
-            self::$_isCoreEnv = false;
+        if (!str_contains($ip, 'unix://')) {
+            $conn = new AsyncTcpConnection('frame://' . self::$_remoteIp . ':' . self::$_remotePort);
+        } else {
+            $conn = new AsyncTcpConnection($ip);
+            $conn->protocol = Frame::class;
         }
 
-        if (self::$_isCoreEnv) {
-            if (!str_contains($ip, 'unix://')) {
-                $conn = new AsyncTcpConnection('frame://' . self::$_remoteIp . ':' . self::$_remotePort);
-            } else {
-                $conn = new AsyncTcpConnection($ip);
-                $conn->protocol = Frame::class;
-            }
+        $conn->onClose = [self::class, 'onRemoteClose'];
+        $conn->onConnect = [self::class, 'onRemoteConnect'];
+        $conn->onMessage = [self::class, 'onRemoteMessage'];
+        $conn->connect();
 
-            $conn->onClose = [self::class, 'onRemoteClose'];
-            $conn->onConnect = [self::class, 'onRemoteConnect'];
-            $conn->onMessage = [self::class, 'onRemoteMessage'];
-            $conn->connect();
-
-            if (empty(self::$_pingTimer)) {
-                self::$_pingTimer = Timer::add(self::$pingInterval, 'localzet\Tunnel\Client::ping');
-            }
-        } else {
-            $remote = !str_contains($ip, 'unix://') ? 'tcp://' . self::$_remoteIp . ':' . self::$_remotePort : $ip;
-            $conn = stream_socket_client($remote, $code, $message, 5);
-            if (!$conn) {
-                throw new Exception($message);
-            }
+        if (empty(self::$_pingTimer)) {
+            self::$_pingTimer = Timer::add(self::$pingInterval, 'localzet\Tunnel\Client::ping');
         }
 
         self::$_remoteConnection = $conn;
@@ -218,9 +206,6 @@ class Client
      */
     public static function clearTimer(): void
     {
-        if (!self::$_isCoreEnv) {
-            throw new Exception('localzet\\Tunnel\\Client не поддерживает метод clearTimer без WebCore.');
-        }
         if (self::$_reconnectTimer) {
             Timer::del(self::$_reconnectTimer);
             self::$_reconnectTimer = null;
@@ -354,9 +339,6 @@ class Client
      */
     protected static function send($data): void
     {
-        if (!self::$_isCoreEnv) {
-            throw new Exception("localzet\\Tunnel\\Client не поддерживает метод {$data['type']} без WebCore.");
-        }
         self::connect(self::$_remoteIp, self::$_remotePort);
         self::$_remoteConnection->send(serialize($data));
     }
@@ -369,11 +351,6 @@ class Client
     {
         self::connect(self::$_remoteIp, self::$_remotePort);
         $body = serialize($data);
-        if (self::$_isCoreEnv) {
-            self::$_remoteConnection->send($body);
-        } else {
-            $buffer = pack('N', 4 + strlen($body)) . $body;
-            fwrite(self::$_remoteConnection, $buffer);
-        }
+        self::$_remoteConnection->send($body);
     }
 }

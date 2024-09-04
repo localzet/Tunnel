@@ -25,19 +25,18 @@ declare(strict_types=1);
 
 namespace localzet\Tunnel;
 
-use localzet\Server as Core;
 use localzet\Server\Connection\TcpConnection;
 use localzet\Server\Protocols\Frame;
 
 /**
  * Tunnel\Server
  */
-class Server
+class Server extends \localzet\Server
 {
-    /**
-     * @var Core|null
-     */
-    protected ?Core $_core = null;
+    public string $name = 'Tunnel';
+    public int $count = 1;
+    protected array $channels = [];
+    public ?string $protocol = Frame::class;
 
     /**
      * @var Queue[]
@@ -51,17 +50,13 @@ class Server
     public function __construct(string $ip = '0.0.0.0', int $port = 2206)
     {
         if (!str_contains($ip, 'unix:')) {
-            $core = new Core("frame://$ip:$port");
+            $server = parent::__construct("frame://$ip:$port");
         } else {
-            $core = new Core($ip);
-            $core->protocol = Frame::class;
+            $server = parent::__construct($ip);
         }
-        $core->count = 1;
-        $core->name = 'TunnelServer';
-        $core->channels = array();
-        $core->onMessage = array($this, 'onMessage');
-        $core->onClose = array($this, 'onClose');
-        $this->_core = $core;
+
+        $server->onMessage = array($this, 'onMessage');
+        $server->onClose = array($this, 'onClose');
     }
 
     /**
@@ -72,19 +67,19 @@ class Server
     {
         if (!empty($connection->channels)) {
             foreach ($connection->channels as $channel) {
-                unset($this->_core->channels[$channel][$connection->id]);
-                if (empty($this->_core->channels[$channel])) {
-                    unset($this->_core->channels[$channel]);
+                unset($this->channels[$channel][$connection->id]);
+                if (empty($this->channels[$channel])) {
+                    unset($this->channels[$channel]);
                 }
             }
         }
 
         if (!empty($connection->watchs)) {
-            foreach ($connection->watchs as $channel) {
-                if (isset($this->_queues[$channel])) {
-                    $this->_queues[$channel]->removeWatch($connection);
-                    if ($this->_queues[$channel]->isEmpty()) {
-                        unset($this->_queues[$channel]);
+            foreach ($connection->watchs as $watch) {
+                if (isset($this->_queues[$watch])) {
+                    $this->_queues[$watch]->removeWatch($connection);
+                    if ($this->_queues[$watch]->isEmpty()) {
+                        unset($this->_queues[$watch]);
                     }
                 }
             }
@@ -136,7 +131,11 @@ class Server
                 break;
             case 'watch':
                 foreach ($data['channels'] as $channel) {
-                    $this->getQueue($channel)->addWatch($connection);
+                    if (isset($this->_queues[$channel])) {
+                        $this->_queues[$channel]->addWatch($connection);
+                    } else {
+                        ($this->_queues[$channel] = new Queue($channel))->addWatch($connection);
+                    }
                 }
                 break;
             case 'unwatch':
@@ -151,30 +150,22 @@ class Server
                 break;
             case 'enqueue':
                 foreach ($data['channels'] as $channel) {
-                    $this->getQueue($channel)->enqueue($data['data']);
+                    if (isset($this->_queues[$channel])) {
+                        $this->_queues[$channel]->enqueue($data['data']);
+                    } else {
+                        ($this->_queues[$channel] = new Queue($channel))->enqueue($data['data']);
+                    }
                 }
                 break;
             case 'reserve':
                 if (isset($connection->watchs)) {
-                    foreach ($connection->watchs as $channel) {
-                        if (isset($this->_queues[$channel])) {
-                            $this->_queues[$channel]->addConsumer($connection);
+                    foreach ($connection->watchs as $watch) {
+                        if (isset($this->_queues[$watch])) {
+                            $this->_queues[$watch]->addConsumer($connection);
                         }
                     }
                 }
                 break;
         }
-    }
-
-    /**
-     * @param $channel
-     * @return Queue
-     */
-    private function getQueue($channel): Queue
-    {
-        if (isset($this->_queues[$channel])) {
-            return $this->_queues[$channel];
-        }
-        return ($this->_queues[$channel] = new Queue($channel));
     }
 }
