@@ -1,5 +1,4 @@
-<?php
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 /**
  * @package     Localzet Tunnel
@@ -7,20 +6,22 @@ declare(strict_types=1);
  *
  * @author      Ivan Zorin <creator@localzet.com>
  * @copyright   Copyright (c) 2018-2024 Localzet Group
- * @license     GNU Affero General Public License, version 3
+ * @license     https://www.gnu.org/licenses/agpl-3.0 GNU Affero General Public License v3.0
  *
  *              This program is free software: you can redistribute it and/or modify
- *              it under the terms of the GNU Affero General Public License as
- *              published by the Free Software Foundation, either version 3 of the
- *              License, or (at your option) any later version.
+ *              it under the terms of the GNU Affero General Public License as published
+ *              by the Free Software Foundation, either version 3 of the License, or
+ *              (at your option) any later version.
  *
  *              This program is distributed in the hope that it will be useful,
  *              but WITHOUT ANY WARRANTY; without even the implied warranty of
- *              MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *              MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *              GNU Affero General Public License for more details.
  *
  *              You should have received a copy of the GNU Affero General Public License
- *              along with this program. If not, see <https://www.gnu.org/licenses/>.
+ *              along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ *              For any questions, please contact <creator@localzet.com>
  */
 
 namespace localzet\Tunnel;
@@ -30,8 +31,6 @@ use localzet\Server as LocalzetServer;
 use localzet\Server\Connection\AsyncTcpConnection;
 use localzet\Server\Connection\ConnectionInterface;
 use localzet\Server\Connection\TcpConnection;
-use localzet\Server\Protocols\ProtocolInterface;
-use localzet\Server\Protocols\Websocket;
 use localzet\Timer;
 use Throwable;
 
@@ -40,65 +39,44 @@ use Throwable;
  */
 class Client
 {
-    /**
-     * @var callable
-     */
+    /** @var callable */
     public static $onMessage = null;
 
-    /**
-     * @var callable
-     */
+    /** @var callable */
     public static $onConnect = null;
 
-    /**
-     * @var callable
-     */
+    /** @var callable */
     public static $onClose = null;
 
-    /**
-     * @var ConnectionInterface|resource|null|false
-     */
+    /** @var ConnectionInterface|resource|null|false */
     protected static mixed $connection = null;
 
-    /**
-     * @var string|null
-     */
+    /** @var string|null */
     protected static ?string $socketName = null;
 
-    /**
-     * @var int|null
-     */
-    protected static ?int $_reconnectTimer = null;
+    /** @var int|null */
+    protected static ?int $reconnectTimer = null;
 
-    /**
-     * @var int|null
-     */
+    /** @var int|null */
     protected static ?int $pingTimer = null;
 
-    /**
-     * @var array
-     */
+    /** @var array */
     protected static array $events = [];
 
-    /**
-     * @var callable[]
-     */
-    protected static array $_queues = [];
+    /** @var callable[] */
+    protected static array $queues = [];
 
-    /**
-     * @var bool
-     */
+    /** @var bool */
     protected static bool $isServerEnv = true;
 
-    /**
-     * @var float
-     */
+    /** @var float */
     public static float $pingInterval = 25;
 
     /** @var string|null|class-string */
     private static ?string $protocol = null;
 
     /**
+     * @param string|null $socketName
      * @throws Throwable
      */
     public static function connect(?string $socketName = null): void
@@ -179,8 +157,8 @@ class Client
                 throw new Exception("event:$event не является функцией");
             }
         } else {
-            if (isset(self::$_queues[$event])) {
-                call_user_func(self::$_queues[$event], $event_data);
+            if (isset(self::$queues[$event])) {
+                call_user_func(self::$queues[$event], $event_data);
             } else {
                 throw new Exception("queue:$event не является функцией");
             }
@@ -196,7 +174,7 @@ class Client
         echo "Предупреждение канала: Соединение закрыто, попытка переподключения\n";
         self::$connection = null;
         self::clearTimer();
-        self::$_reconnectTimer = Timer::add(1, [self::class, 'connect'], [self::$socketName]);
+        self::$reconnectTimer = Timer::add(1, [self::class, 'connect'], [self::$socketName]);
         if (self::$onClose) {
             call_user_func(self::$onClose);
         }
@@ -237,9 +215,9 @@ class Client
         if (!self::$isServerEnv) {
             throw new Exception('Метод clearTimer не поддерживается вне среды Localzet Server');
         }
-        if (self::$_reconnectTimer) {
-            Timer::del(self::$_reconnectTimer);
-            self::$_reconnectTimer = null;
+        if (self::$reconnectTimer) {
+            Timer::del(self::$reconnectTimer);
+            self::$reconnectTimer = null;
         }
     }
 
@@ -337,7 +315,7 @@ class Client
         ]);
 
         foreach ($channels as $channel) {
-            self::$_queues[$channel] = $callback;
+            self::$queues[$channel] = $callback;
         }
 
         if ($autoReserve) {
@@ -357,8 +335,8 @@ class Client
             'channels' => $channels
         ]);
         foreach ($channels as $channel) {
-            if (isset(self::$_queues[$channel])) {
-                unset(self::$_queues[$channel]);
+            if (isset(self::$queues[$channel])) {
+                unset(self::$queues[$channel]);
             }
         }
     }
