@@ -25,61 +25,56 @@ declare(strict_types=1);
 
 namespace localzet\Tunnel;
 
+use localzet\Server as LocalzetServer;
+use localzet\Server\Connection\ConnectionInterface;
 use localzet\Server\Connection\TcpConnection;
-use localzet\Server\Protocols\Frame;
+use localzet\ServerAbstract;
 
-/**
- * Tunnel\Server
- */
-class Server extends \localzet\Server
+class Server extends ServerAbstract
 {
-    public string $name = 'Tunnel';
-    public int $count = 1;
-    protected array $channels = [];
-    public ?string $protocol = Frame::class;
+    /** @var LocalzetServer */
+    private LocalzetServer $server;
+
+    /** @var Queue[] */
+    protected array $queues = [];
 
     /**
-     * @var Queue[]
+     * @param string|null $socketName
      */
-    protected array $_queues = array();
-
-    /**
-     * @param string $ip
-     * @param int $port
-     */
-    public function __construct(string $ip = '0.0.0.0', int $port = 2206)
+    public function __construct(?string $socketName = null)
     {
-        if (!str_contains($ip, 'unix:')) {
-            $server = parent::__construct("frame://$ip:$port");
-        } else {
-            $server = parent::__construct($ip);
+        if ($socketName) {
+            $this->server = localzet_start(
+                name: 'Tunnel',
+                count: 1,
+                listen: $socketName,
+                handler: $this::class,
+            );
+            $this->server->channels = [];
         }
-
-        $server->onMessage = array($this, 'onMessage');
-        $server->onClose = array($this, 'onClose');
     }
 
     /**
-     * @param $connection
+     * @param TcpConnection $connection
      * @return void
      */
-    public function onClose($connection): void
+    public function onClose(ConnectionInterface &$connection): void
     {
         if (!empty($connection->channels)) {
             foreach ($connection->channels as $channel) {
-                unset($this->channels[$channel][$connection->id]);
-                if (empty($this->channels[$channel])) {
-                    unset($this->channels[$channel]);
+                unset($this->server->channels[$channel][$connection->id]);
+                if (empty($this->server->channels[$channel])) {
+                    unset($this->server->channels[$channel]);
                 }
             }
         }
 
         if (!empty($connection->watchs)) {
             foreach ($connection->watchs as $watch) {
-                if (isset($this->_queues[$watch])) {
-                    $this->_queues[$watch]->removeWatch($connection);
-                    if ($this->_queues[$watch]->isEmpty()) {
-                        unset($this->_queues[$watch]);
+                if (isset($this->queues[$watch])) {
+                    $this->queues[$watch]->removeWatch($connection);
+                    if ($this->queues[$watch]->isEmpty()) {
+                        unset($this->queues[$watch]);
                     }
                 }
             }
@@ -88,80 +83,97 @@ class Server extends \localzet\Server
 
     /**
      * @param TcpConnection $connection
-     * @param string $data
+     * @param mixed $request
+     * @return void
      */
-    public function onMessage(TcpConnection $connection, string $data): void
+    public function onMessage(ConnectionInterface &$connection, mixed $request): void
     {
-        if (!$data) {
+        if (!$request) {
             return;
         }
-        $core = $this->_core;
-        $data = unserialize($data);
+        $data = unserialize($request);
         $type = $data['type'];
+        $channels = $data['channels'];
+        $event_data = $data['data'];
+
         switch ($type) {
             case 'subscribe':
-                foreach ($data['channels'] as $channel) {
+                foreach ($channels as $channel) {
                     $connection->channels[$channel] = $channel;
-                    $core->channels[$channel][$connection->id] = $connection;
+                    $this->server->channels[$channel][$connection->id] = $connection;
                 }
                 break;
             case 'unsubscribe':
-                foreach ($data['channels'] as $channel) {
+                foreach ($channels as $channel) {
                     if (isset($connection->channels[$channel])) {
                         unset($connection->channels[$channel]);
                     }
-                    if (isset($core->channels[$channel][$connection->id])) {
-                        unset($core->channels[$channel][$connection->id]);
-                        if (empty($core->channels[$channel])) {
-                            unset($core->channels[$channel]);
+                    if (isset($this->server->channels[$channel][$connection->id])) {
+                        unset($this->server->channels[$channel][$connection->id]);
+                        if (empty($this->server->channels[$channel])) {
+                            unset($this->server->channels[$channel]);
                         }
                     }
                 }
                 break;
             case 'publish':
-                foreach ($data['channels'] as $channel) {
-                    if (empty($core->channels[$channel])) {
+                foreach ($channels as $channel) {
+                    if (empty($this->server->channels[$channel])) {
                         continue;
                     }
-                    $buffer = serialize(array('type' => 'event', 'channel' => $channel, 'data' => $data['data'])) . "\n";
-                    foreach ($core->channels[$channel] as $connection) {
+                    $buffer = serialize(['type' => 'event', 'channel' => $channel, 'data' => $event_data]);
+                    foreach ($this->server->channels[$channel] as $connection) {
                         $connection->send($buffer);
                     }
                 }
                 break;
+            case 'publishLoop':
+                foreach ($channels as $channel) {
+                    if (empty($this->server->channels[$channel])) {
+                        continue;
+                    }
+                    $buffer = serialize(['type' => 'event', 'channel' => $channel, 'data' => $event_data]);
+
+                    $connection = next($this->server->channels[$channel]);
+                    if (!$connection) {
+                        $connection = reset($this->server->channels[$channel]);
+                    }
+                    $connection->send($buffer);
+                }
+                break;
             case 'watch':
-                foreach ($data['channels'] as $channel) {
-                    if (isset($this->_queues[$channel])) {
-                        $this->_queues[$channel]->addWatch($connection);
+                foreach ($channels as $channel) {
+                    if (isset($this->queues[$channel])) {
+                        $this->queues[$channel]->addWatch($connection);
                     } else {
-                        ($this->_queues[$channel] = new Queue($channel))->addWatch($connection);
+                        ($this->queues[$channel] = new Queue($channel))->addWatch($connection);
                     }
                 }
                 break;
             case 'unwatch':
-                foreach ($data['channels'] as $channel) {
-                    if (isset($this->_queues[$channel])) {
-                        $this->_queues[$channel]->removeWatch($connection);
-                        if ($this->_queues[$channel]->isEmpty()) {
-                            unset($this->_queues[$channel]);
+                foreach ($channels as $channel) {
+                    if (isset($this->queues[$channel])) {
+                        $this->queues[$channel]->removeWatch($connection);
+                        if ($this->queues[$channel]->isEmpty()) {
+                            unset($this->queues[$channel]);
                         }
                     }
                 }
                 break;
             case 'enqueue':
-                foreach ($data['channels'] as $channel) {
-                    if (isset($this->_queues[$channel])) {
-                        $this->_queues[$channel]->enqueue($data['data']);
+                foreach ($channels as $channel) {
+                    if (isset($this->queues[$channel])) {
+                        $this->queues[$channel]->enqueue($event_data);
                     } else {
-                        ($this->_queues[$channel] = new Queue($channel))->enqueue($data['data']);
+                        ($this->queues[$channel] = new Queue($channel))->enqueue($event_data);
                     }
                 }
                 break;
             case 'reserve':
                 if (isset($connection->watchs)) {
                     foreach ($connection->watchs as $watch) {
-                        if (isset($this->_queues[$watch])) {
-                            $this->_queues[$watch]->addConsumer($connection);
+                        if (isset($this->queues[$watch])) {
+                            $this->queues[$watch]->addConsumer($connection);
                         }
                     }
                 }

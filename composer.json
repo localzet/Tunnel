@@ -27,12 +27,12 @@
     "source": "https://github.com/localzet/Tunnel"
   },
   "require": {
-    "php": "^8.2",
-    "localzet/server": "^4.2"
+    "php": ">=8.1",
+    "localzet/server": "^4.3"
   },
   "autoload": {
     "psr-4": {
-      "localzet\\Tunnel\\": "src/"
+      "localzet\\Tunnel\\": "src"
     }
   }
 }

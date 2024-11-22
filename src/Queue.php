@@ -28,41 +28,28 @@ namespace localzet\Tunnel;
 use localzet\Server\Connection\TcpConnection;
 use SplQueue;
 
-/**
- * Tunnel\Queue
- */
 class Queue
 {
-
-    /**
-     * @var string
-     */
+    /** @var string */
     public string $name = 'default';
-    /**
-     * @var array
-     */
-    public array $watcher = array();
-    /**
-     * @var array
-     */
-    public array $consumer = array();
-    /**
-     * @var SplQueue|null
-     */
+
+    /** @var array */
+    public array $watcher = [];
+
+    /** @var array */
+    public array $consumer = [];
+
+    /** @var SplQueue|null */
     protected ?SplQueue $queue = null;
 
-    /**
-     * @param $name
-     */
+    /** @param $name */
     public function __construct($name)
     {
         $this->name = $name;
         $this->queue = new SplQueue();
     }
 
-    /**
-     * @param TcpConnection $connection
-     */
+    /** @param TcpConnection $connection */
     public function addWatch(TcpConnection $connection): void
     {
         if (!isset($this->watcher[$connection->id])) {
@@ -71,9 +58,7 @@ class Queue
         }
     }
 
-    /**
-     * @param TcpConnection $connection
-     */
+    /** @param TcpConnection $connection */
     public function removeWatch(TcpConnection $connection): void
     {
         if (isset($connection->watchs) && in_array($this->name, $connection->watchs)) {
@@ -88,9 +73,7 @@ class Queue
         }
     }
 
-    /**
-     * @param TcpConnection $connection
-     */
+    /** @param TcpConnection $connection */
     public function addConsumer(TcpConnection $connection): void
     {
         if (isset($this->watcher[$connection->id]) && !isset($this->consumer[$connection->id])) {
@@ -123,7 +106,7 @@ class Queue
             $idx = key($this->consumer);
             $connection = $this->consumer[$idx];
             unset($this->consumer[$idx]);
-            $connection->send(serialize(array('type' => 'queue', 'channel' => $this->name, 'data' => $data)));
+            $connection->send(serialize(['type' => 'queue', 'channel' => $this->name, 'data' => $data]));
             if (count($this->consumer) == 0) {
                 break;
             }

@@ -26,9 +26,12 @@ declare(strict_types=1);
 namespace localzet\Tunnel;
 
 use Exception;
+use localzet\Server as LocalzetServer;
 use localzet\Server\Connection\AsyncTcpConnection;
+use localzet\Server\Connection\ConnectionInterface;
 use localzet\Server\Connection\TcpConnection;
-use localzet\Server\Protocols\Frame;
+use localzet\Server\Protocols\ProtocolInterface;
+use localzet\Server\Protocols\Websocket;
 use localzet\Timer;
 use Throwable;
 
@@ -53,19 +56,14 @@ class Client
     public static $onClose = null;
 
     /**
-     * @var TcpConnection|resource|null
+     * @var ConnectionInterface|resource|null|false
      */
-    protected static $_remoteConnection = null;
+    protected static mixed $connection = null;
 
     /**
      * @var string|null
      */
-    protected static ?string $_remoteIp = null;
-
-    /**
-     * @var int|null
-     */
-    protected static ?int $_remotePort = null;
+    protected static ?string $socketName = null;
 
     /**
      * @var int|null
@@ -75,76 +73,106 @@ class Client
     /**
      * @var int|null
      */
-    protected static ?int $_pingTimer = null;
+    protected static ?int $pingTimer = null;
 
     /**
      * @var array
      */
-    protected static array $_events = array();
+    protected static array $events = [];
 
     /**
      * @var callable[]
      */
-    protected static array $_queues = array();
+    protected static array $_queues = [];
 
     /**
      * @var bool
      */
-    protected static bool $_isCoreEnv = true;
+    protected static bool $isServerEnv = true;
 
     /**
      * @var float
      */
     public static float $pingInterval = 25;
 
+    /** @var string|null|class-string */
+    private static ?string $protocol = null;
+
     /**
-     * @param string $ip
-     * @param int $port
      * @throws Throwable
      */
-    public static function connect(string $ip = '127.0.0.1', int $port = 2206): void
+    public static function connect(?string $socketName = null): void
     {
-        if (self::$_remoteConnection) {
+        if (self::$connection) {
             return;
         }
 
-        self::$_remoteIp = $ip;
-        self::$_remotePort = $port;
+        self::$socketName = $socketName;
 
-        if (!str_contains($ip, 'unix://')) {
-            $conn = new AsyncTcpConnection('frame://' . self::$_remoteIp . ':' . self::$_remotePort);
+        if (PHP_SAPI !== 'cli' || !class_exists(LocalzetServer::class, false)) {
+            self::$isServerEnv = false;
+        }
+
+        if (self::$isServerEnv) {
+            $connection = new AsyncTcpConnection(self::$socketName);
+            $connection->onClose = [self::class, 'onClose'];
+            $connection->onConnect = [self::class, 'onConnect'];
+            $connection->onMessage = [self::class, 'onMessage'];
+            $connection->connect();
+
+            if (empty(self::$pingTimer)) {
+                self::$pingTimer = Timer::add(self::$pingInterval, [self::class, 'ping']);
+            }
         } else {
-            $conn = new AsyncTcpConnection($ip);
-            $conn->protocol = Frame::class;
+            [$scheme, $address] = explode('://', self::$socketName, 2);
+            $transport = LocalzetServer::BUILD_IN_TRANSPORTS[$scheme] ?? 'tcp';
+            $scheme = ucfirst($scheme);
+            self::$protocol = $scheme[0] === '\\' ? $scheme : 'Protocols\\' . $scheme;
+            if (!class_exists(self::$protocol)) {
+                self::$protocol = "localzet\\Server\\Protocols\\$scheme";
+                if (!class_exists(self::$protocol)) {
+                    throw new Exception("Класс \\Protocols\\$scheme не существует");
+                }
+            }
+
+            if (in_array(self::$protocol, [
+                LocalzetServer\Protocols\Websocket::class,
+                LocalzetServer\Protocols\Ws::class,
+                LocalzetServer\Protocols\Http::class,
+                LocalzetServer\Protocols\Https::class,
+            ])) {
+                throw new Exception('Вне среды Localzet Server протоколы WebSocket и HTTP недоступны. 
+                                                Используйте Frame, Text или собственный протокол.');
+            }
+
+            $connection = stream_socket_client(
+                "$transport://$address",
+                $errno, $errmsg,
+                5, // STREAM_CLIENT_ASYNC_CONNECT
+            );
+
+            if (!$connection) throw new Exception($errmsg);
         }
 
-        $conn->onClose = [self::class, 'onRemoteClose'];
-        $conn->onConnect = [self::class, 'onRemoteConnect'];
-        $conn->onMessage = [self::class, 'onRemoteMessage'];
-        $conn->connect();
-
-        if (empty(self::$_pingTimer)) {
-            self::$_pingTimer = Timer::add(self::$pingInterval, 'localzet\Tunnel\Client::ping');
-        }
-
-        self::$_remoteConnection = $conn;
+        self::$connection = $connection;
     }
 
     /**
      * @param TcpConnection $connection
-     * @param string $data
+     * @param mixed $request
+     * @return void
      * @throws Exception
      */
-    public static function onRemoteMessage(TcpConnection $connection, string $data): void
+    public static function onMessage(ConnectionInterface &$connection, mixed $request): void
     {
-        $data = unserialize($data);
+        $data = unserialize($request);
         $type = $data['type'];
         $event = $data['channel'];
         $event_data = $data['data'];
 
         if ($type == 'event') {
-            if (!empty(self::$_events[$event])) {
-                call_user_func(self::$_events[$event], $event_data);
+            if (!empty(self::$events[$event])) {
+                call_user_func(self::$events[$event], $event_data);
             } elseif (!empty(Client::$onMessage)) {
                 call_user_func(Client::$onMessage, $event, $event_data);
             } else {
@@ -161,25 +189,16 @@ class Client
 
     /**
      * @return void
-     * @throws Throwable
-     */
-    public static function ping(): void
-    {
-        self::$_remoteConnection?->send('');
-    }
-
-    /**
-     * @return void
      * @throws Exception
      */
-    public static function onRemoteClose(): void
+    public static function onClose(): void
     {
         echo "Предупреждение канала: Соединение закрыто, попытка переподключения\n";
-        self::$_remoteConnection = null;
+        self::$connection = null;
         self::clearTimer();
-        self::$_reconnectTimer = Timer::add(1, 'localzet\Tunnel\Client::connect', array(self::$_remoteIp, self::$_remotePort));
+        self::$_reconnectTimer = Timer::add(1, [self::class, 'connect'], [self::$socketName]);
         if (self::$onClose) {
-            call_user_func(Client::$onClose);
+            call_user_func(self::$onClose);
         }
     }
 
@@ -187,17 +206,26 @@ class Client
      * @return void
      * @throws Throwable
      */
-    public static function onRemoteConnect(): void
+    public static function onConnect(): void
     {
-        $all_event_names = array_keys(self::$_events);
+        $all_event_names = array_keys(self::$events);
         if ($all_event_names) {
             self::subscribe($all_event_names);
         }
         self::clearTimer();
 
         if (self::$onConnect) {
-            call_user_func(Client::$onConnect);
+            call_user_func(self::$onConnect);
         }
+    }
+
+    /**
+     * @return void
+     * @throws Throwable
+     */
+    public static function ping(): void
+    {
+        self::$connection?->send('');
     }
 
     /**
@@ -206,6 +234,9 @@ class Client
      */
     public static function clearTimer(): void
     {
+        if (!self::$isServerEnv) {
+            throw new Exception('Метод clearTimer не поддерживается вне среды Localzet Server');
+        }
         if (self::$_reconnectTimer) {
             Timer::del(self::$_reconnectTimer);
             self::$_reconnectTimer = null;
@@ -222,7 +253,7 @@ class Client
         if (!is_callable($callback)) {
             throw new Exception('Callback не поддается вызову для события.');
         }
-        self::$_events[$event] = $callback;
+        self::$events[$event] = $callback;
         self::subscribe($event);
     }
 
@@ -234,10 +265,13 @@ class Client
     public static function subscribe(array|string $events): void
     {
         $events = (array)$events;
-        self::send(array('type' => 'subscribe', 'channels' => $events));
+        self::send([
+            'type' => 'subscribe',
+            'channels' => $events
+        ]);
         foreach ($events as $event) {
-            if (!isset(self::$_events[$event])) {
-                self::$_events[$event] = null;
+            if (!isset(self::$events[$event])) {
+                self::$events[$event] = null;
             }
         }
     }
@@ -250,20 +284,28 @@ class Client
     public static function unsubscribe(array|string $events): void
     {
         $events = (array)$events;
-        self::send(array('type' => 'unsubscribe', 'channels' => $events));
+        self::send([
+            'type' => 'unsubscribe',
+            'channels' => $events
+        ]);
         foreach ($events as $event) {
-            unset(self::$_events[$event]);
+            unset(self::$events[$event]);
         }
     }
 
     /**
      * @param string|string[] $events
      * @param mixed $data
+     * @param bool $is_loop
      * @throws Throwable
      */
-    public static function publish(array|string $events, mixed $data): void
+    public static function publish(array|string $events, mixed $data, bool $is_loop = false): void
     {
-        self::sendAnyway(array('type' => 'publish', 'channels' => (array)$events, 'data' => $data));
+        self::sendAnyway([
+            'type' => $is_loop ? 'publishLoop' : 'publish',
+            'channels' => (array)$events,
+            'data' => $data
+        ]);
     }
 
     /**
@@ -289,7 +331,10 @@ class Client
         }
 
         $channels = (array)$channels;
-        self::send(array('type' => 'watch', 'channels' => $channels));
+        self::send([
+            'type' => 'watch',
+            'channels' => $channels
+        ]);
 
         foreach ($channels as $channel) {
             self::$_queues[$channel] = $callback;
@@ -307,7 +352,10 @@ class Client
     public static function unwatch(array|string $channels): void
     {
         $channels = (array)$channels;
-        self::send(array('type' => 'unwatch', 'channels' => $channels));
+        self::send([
+            'type' => 'unwatch',
+            'channels' => $channels
+        ]);
         foreach ($channels as $channel) {
             if (isset(self::$_queues[$channel])) {
                 unset(self::$_queues[$channel]);
@@ -322,7 +370,11 @@ class Client
      */
     public static function enqueue(array|string $channels, mixed $data): void
     {
-        self::sendAnyway(array('type' => 'enqueue', 'channels' => (array)$channels, 'data' => $data));
+        self::sendAnyway([
+            'type' => 'enqueue',
+            'channels' => (array)$channels,
+            'data' => $data
+        ]);
     }
 
     /**
@@ -330,7 +382,9 @@ class Client
      */
     public static function reserve(): void
     {
-        self::send(array('type' => 'reserve'));
+        self::send([
+            'type' => 'reserve'
+        ]);
     }
 
     /**
@@ -339,8 +393,12 @@ class Client
      */
     protected static function send($data): void
     {
-        self::connect(self::$_remoteIp, self::$_remotePort);
-        self::$_remoteConnection->send(serialize($data));
+        if (!self::$isServerEnv) {
+            throw new Exception("Метод {$data['type']} не поддерживается вне среды Localzet Server");
+        }
+
+        self::connect(self::$socketName);
+        self::$connection->send(serialize($data));
     }
 
     /**
@@ -349,8 +407,12 @@ class Client
      */
     protected static function sendAnyway($data): void
     {
-        self::connect(self::$_remoteIp, self::$_remotePort);
+        self::connect(self::$socketName);
         $body = serialize($data);
-        self::$_remoteConnection->send($body);
+        if (self::$isServerEnv) {
+            self::$connection->send($body);
+        } else {
+            fwrite(self::$connection, self::$protocol::encode($body));
+        }
     }
 }
