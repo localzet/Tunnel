@@ -45,14 +45,20 @@ class Server extends ServerAbstract
     public function __construct(?string $socketName = null)
     {
         if ($socketName) {
-            $this->server = localzet_start(
+            localzet_start(
                 name: 'Tunnel',
                 count: 1,
                 listen: $socketName,
+                reloadable: false,
                 handler: $this::class,
             );
-            $this->server->channels = [];
         }
+    }
+
+    public function onServerStart(LocalzetServer &$server): void
+    {
+        $this->server = $server;
+        $this->server->channels = [];
     }
 
     /**
@@ -142,6 +148,7 @@ class Server extends ServerAbstract
                     $connection->send($buffer);
                 }
                 break;
+
             case 'watch':
                 foreach ($channels as $channel) {
                     if (isset($this->queues[$channel])) {
