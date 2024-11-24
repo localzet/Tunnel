@@ -171,7 +171,7 @@ class Client
      */
     public static function onClose(): void
     {
-        echo "Предупреждение канала: Соединение закрыто, попытка переподключения\n";
+        echo "Предупреждение: Соединение закрыто, попытка переподключения\n";
         self::$connection = null;
         self::clearTimer();
         self::$reconnectTimer = Timer::add(1, [self::class, 'connect'], [self::$socketName]);

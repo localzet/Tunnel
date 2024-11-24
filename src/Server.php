@@ -101,7 +101,7 @@ class Server extends ServerAbstract
         $data = unserialize($request);
         $type = $data['type'];
         $channels = $data['channels'];
-        $event_data = $data['data'];
+        $event_data = $data['data'] ?? null;
 
         switch ($type) {
             case 'subscribe':
