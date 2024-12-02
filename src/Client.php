@@ -75,6 +75,12 @@ class Client
     /** @var string|null|class-string */
     private static ?string $protocol = null;
 
+    /** @var bool */
+    protected static bool $debug = false;
+
+    /** @var bool */
+    protected static bool $json = false;
+
     /**
      * @param string|null $socketName
      * @throws Throwable
@@ -96,6 +102,7 @@ class Client
             $connection->onClose = [self::class, 'onClose'];
             $connection->onConnect = [self::class, 'onConnect'];
             $connection->onMessage = [self::class, 'onMessage'];
+            $connection->json = false;
             $connection->connect();
 
             if (empty(self::$pingTimer)) {
@@ -129,6 +136,7 @@ class Client
                 5, // STREAM_CLIENT_ASYNC_CONNECT
             );
 
+            $connection->json = false;
             if (!$connection) throw new Exception($errmsg);
         }
 
@@ -143,7 +151,29 @@ class Client
      */
     public static function onMessage(ConnectionInterface &$connection, mixed $request): void
     {
-        $data = unserialize($request);
+        self::$debug && LocalzetServer::log('onMessage: ' . $request);
+        if (!$request) {
+            return;
+        }
+
+        try {
+            $data = unserialize($request);
+            self::$connection->json = false;
+        } catch (Throwable $e) {
+            self::$debug && LocalzetServer::log('Throwable: ' . $exception);
+            $data = false;
+        }
+
+        if (!$data) {
+            try {
+                $data = json_decode($request, true);
+                self::$connection->json = true;
+            } catch (Throwable $exception) {
+                self::$debug && LocalzetServer::log('Throwable: ' . $exception);
+                return;
+            }
+        }
+
         $type = $data['type'];
         $event = $data['channel'];
         $event_data = $data['data'];
@@ -376,7 +406,7 @@ class Client
         }
 
         self::connect(self::$socketName);
-        self::$connection->send(serialize($data));
+        self::$connection->send(self::$connection->json ? json_encode($data) : serialize($data));
     }
 
     /**
@@ -386,7 +416,7 @@ class Client
     protected static function sendAnyway($data): void
     {
         self::connect(self::$socketName);
-        $body = serialize($data);
+        $body = self::$connection->json ? json_encode($data) : serialize($data);
         if (self::$isServerEnv) {
             self::$connection->send($body);
         } else {

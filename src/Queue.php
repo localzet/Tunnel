@@ -107,7 +107,8 @@ class Queue
             $idx = key($this->consumer);
             $connection = $this->consumer[$idx];
             unset($this->consumer[$idx]);
-            $connection->send(serialize(['type' => 'queue', 'channel' => $this->name, 'data' => $data]));
+            $buffer = ['type' => 'queue', 'channel' => $this->name, 'data' => $data];
+            $connection->send($connection->json ? json_encode($buffer) : serialize($buffer));
             if (count($this->consumer) == 0) {
                 break;
             }
