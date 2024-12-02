@@ -30,6 +30,7 @@ use localzet\Server as LocalzetServer;
 use localzet\Server\Connection\ConnectionInterface;
 use localzet\Server\Connection\TcpConnection;
 use localzet\ServerAbstract;
+use Throwable;
 
 class Server extends ServerAbstract
 {
@@ -98,7 +99,11 @@ class Server extends ServerAbstract
         if (!$request) {
             return;
         }
-        $data = unserialize($request);
+        try {
+            $data = unserialize($request);
+        } catch (Throwable) {
+            return;
+        }
         $type = $data['type'];
         $channels = $data['channels'];
         $event_data = $data['data'] ?? null;
