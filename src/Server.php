@@ -104,17 +104,17 @@ class Server extends ServerAbstract
         }
 
         try {
-            $data = unserialize($request);
-            $connection->json = false;
+            $data = json_decode($request, true);
+            $connection->json = true;
         } catch (Throwable $exception) {
-            $this->debug && LocalzetServer::log('Throwable: ' . $exception);
+            // $this->debug && LocalzetServer::log('Throwable: ' . $exception);
             $data = false;
         }
 
         if (!$data) {
             try {
-                $data = json_decode($request, true);
-                $connection->json = true;
+                $data = unserialize($request);
+                $connection->json = false;
             } catch (Throwable $exception) {
                 $this->debug && LocalzetServer::log('Throwable: ' . $exception);
                 return;

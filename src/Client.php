@@ -157,17 +157,17 @@ class Client
         }
 
         try {
-            $data = unserialize($request);
-            self::$connection->json = false;
+            $data = json_decode($request, true);
+            self::$connection->json = true;
         } catch (Throwable $exception) {
-            self::$debug && LocalzetServer::log('Throwable: ' . $exception);
+            // self::$debug && LocalzetServer::log('Throwable: ' . $exception);
             $data = false;
         }
 
         if (!$data) {
             try {
-                $data = json_decode($request, true);
-                self::$connection->json = true;
+                $data = unserialize($request);
+                self::$connection->json = false;
             } catch (Throwable $exception) {
                 self::$debug && LocalzetServer::log('Throwable: ' . $exception);
                 return;
