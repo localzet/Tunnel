@@ -159,7 +159,7 @@ class Client
         try {
             $data = unserialize($request);
             self::$connection->json = false;
-        } catch (Throwable $e) {
+        } catch (Throwable $exception) {
             self::$debug && LocalzetServer::log('Throwable: ' . $exception);
             $data = false;
         }

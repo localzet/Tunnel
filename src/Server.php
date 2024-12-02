@@ -106,7 +106,7 @@ class Server extends ServerAbstract
         try {
             $data = unserialize($request);
             $connection->json = false;
-        } catch (Throwable $e) {
+        } catch (Throwable $exception) {
             $this->debug && LocalzetServer::log('Throwable: ' . $exception);
             $data = false;
         }
