@@ -40,13 +40,11 @@ class Server extends ServerAbstract
     /** @var Queue[] */
     protected array $queues = [];
 
-    /** @var bool */
-    protected bool $debug = false;
-
     /**
      * @param string|null $socketName
+     * @param bool $debug
      */
-    public function __construct(?string $socketName = null)
+    public function __construct(?string $socketName = null, protected bool $debug = false)
     {
         if ($socketName) {
             localzet_start(
