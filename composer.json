@@ -1,6 +1,6 @@
 {
   "name": "localzet/tunnel",
-  "description": "Localzet Tunnel is a cross-server tunnel library developed by Ivan Zorin. It provides functionality for creating secure tunnels between servers, facilitating efficient and secure cross-server communication.",
+  "description": "A client/server messaging channel for Localzet Server processes.",
   "type": "library",
   "keywords": [
     "tunnel",
