@@ -5,7 +5,7 @@
  * @link        https://github.com/localzet/Tunnel
  *
  * @author      Ivan Zorin <creator@localzet.com>
- * @copyright   Copyright (c) 2018-2024 Localzet Group
+ * @copyright   Copyright © 2016-2026 Localzet Group. All rights reserved.
  * @license     https://www.gnu.org/licenses/agpl-3.0 GNU Affero General Public License v3.0
  *
  *              This program is free software: you can redistribute it and/or modify
@@ -15,14 +15,14 @@
  *
  *              This program is distributed in the hope that it will be useful,
  *              but WITHOUT ANY WARRANTY; without even the implied warranty of
- *              MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *              MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *              GNU Affero General Public License for more details.
  *
  *              You should have received a copy of the GNU Affero General Public License
- *              along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *              along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  *              For any questions, please contact <creator@localzet.com>
- */
+*/
 
 namespace localzet\Tunnel;
 
@@ -39,6 +39,7 @@ use Throwable;
  */
 class Client
 {
+    protected static bool $allowObjectSerialization = false;
     /** @var callable */
     public static $onMessage = null;
 
@@ -143,6 +144,11 @@ class Client
         self::$connection = $connection;
     }
 
+    public static function allowObjectSerialization(bool $allow = true): void
+    {
+        self::$allowObjectSerialization = $allow;
+    }
+
     /**
      * @param TcpConnection $connection
      * @param mixed $request
@@ -166,7 +172,7 @@ class Client
 
         if (!$data) {
             try {
-                $data = unserialize($request);
+                $data = unserialize($request, ['allowed_classes' => self::$allowObjectSerialization]);
                 self::$connection->json = false;
             } catch (Throwable $exception) {
                 self::$debug && LocalzetServer::log('Throwable: ' . $exception);

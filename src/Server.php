@@ -5,7 +5,7 @@
  * @link        https://github.com/localzet/Tunnel
  *
  * @author      Ivan Zorin <creator@localzet.com>
- * @copyright   Copyright (c) 2018-2024 Localzet Group
+ * @copyright   Copyright © 2016-2026 Localzet Group. All rights reserved.
  * @license     https://www.gnu.org/licenses/agpl-3.0 GNU Affero General Public License v3.0
  *
  *              This program is free software: you can redistribute it and/or modify
@@ -15,14 +15,14 @@
  *
  *              This program is distributed in the hope that it will be useful,
  *              but WITHOUT ANY WARRANTY; without even the implied warranty of
- *              MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *              MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *              GNU Affero General Public License for more details.
  *
  *              You should have received a copy of the GNU Affero General Public License
- *              along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *              along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  *              For any questions, please contact <creator@localzet.com>
- */
+*/
 
 namespace localzet\Tunnel;
 
@@ -34,6 +34,7 @@ use Throwable;
 
 class Server extends ServerAbstract
 {
+    private bool $allowObjectSerialization = false;
     /** @var LocalzetServer */
     private LocalzetServer $server;
 
@@ -44,8 +45,9 @@ class Server extends ServerAbstract
      * @param string|null $socketName
      * @param bool $debug
      */
-    public function __construct(?string $socketName = null, protected bool $debug = false)
+    public function __construct(?string $socketName = null, protected bool $debug = false, bool $allowObjectSerialization = false)
     {
+        $this->allowObjectSerialization = $allowObjectSerialization;
         if ($socketName) {
             localzet_start(
                 name: 'Tunnel',
@@ -113,12 +115,16 @@ class Server extends ServerAbstract
 
         if (!$data) {
             try {
-                $data = unserialize($request);
+            $data = unserialize($request, ['allowed_classes' => $this->allowObjectSerialization]);
                 $connection->json = false;
             } catch (Throwable $exception) {
                 $this->debug && LocalzetServer::log('Throwable: ' . $exception);
                 return;
             }
+        }
+
+        if (!is_array($data) || !isset($data['type'], $data['channels']) || !is_array($data['channels'])) {
+            return;
         }
 
         $type = $data['type'];
