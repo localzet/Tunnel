@@ -30,6 +30,17 @@
     "php": ">=8.1",
     "localzet/server": "^7.0"
   },
+  "scripts": {
+    "lint": "php tests/lint.php",
+    "test:integration": "php tests/integration.php",
+    "test": [
+      "@lint",
+      "@test:integration"
+    ],
+    "check": [
+      "@test"
+    ]
+  },
   "autoload": {
     "psr-4": {
       "localzet\\Tunnel\\": "src"

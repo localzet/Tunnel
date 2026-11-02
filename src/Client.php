@@ -163,21 +163,29 @@ class Client
         }
 
         try {
-            $data = json_decode($request, true);
+            $data = json_decode($request, true, 512, JSON_THROW_ON_ERROR);
             self::$connection->json = true;
         } catch (Throwable $exception) {
-            // self::$debug && LocalzetServer::log('Throwable: ' . $exception);
-            $data = false;
+            $data = null;
         }
 
-        if (!$data) {
+        if (!is_array($data)) {
             try {
-                $data = unserialize($request, ['allowed_classes' => self::$allowObjectSerialization]);
+                $data = @unserialize($request, ['allowed_classes' => self::$allowObjectSerialization]);
                 self::$connection->json = false;
             } catch (Throwable $exception) {
                 self::$debug && LocalzetServer::log('Throwable: ' . $exception);
                 return;
             }
+        }
+
+        if (!is_array($data)
+            || !isset($data['type'], $data['channel'])
+            || !is_string($data['type'])
+            || !is_string($data['channel'])
+            || !array_key_exists('data', $data)
+        ) {
+            return;
         }
 
         $type = $data['type'];

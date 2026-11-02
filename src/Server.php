@@ -106,16 +106,15 @@ class Server extends ServerAbstract
         }
 
         try {
-            $data = json_decode($request, true);
+            $data = json_decode($request, true, 512, JSON_THROW_ON_ERROR);
             $connection->json = true;
         } catch (Throwable $exception) {
-            // $this->debug && LocalzetServer::log('Throwable: ' . $exception);
-            $data = false;
+            $data = null;
         }
 
-        if (!$data) {
+        if (!is_array($data)) {
             try {
-            $data = unserialize($request, ['allowed_classes' => $this->allowObjectSerialization]);
+                $data = @unserialize($request, ['allowed_classes' => $this->allowObjectSerialization]);
                 $connection->json = false;
             } catch (Throwable $exception) {
                 $this->debug && LocalzetServer::log('Throwable: ' . $exception);
@@ -123,12 +122,20 @@ class Server extends ServerAbstract
             }
         }
 
-        if (!is_array($data) || !isset($data['type'], $data['channels']) || !is_array($data['channels'])) {
+        if (!is_array($data) || !isset($data['type']) || !is_string($data['type'])) {
             return;
         }
 
         $type = $data['type'];
-        $channels = $data['channels'];
+        $channels = $data['channels'] ?? [];
+        if (!is_array($channels) || ($type !== 'reserve' && !isset($data['channels']))) {
+            return;
+        }
+        foreach ($channels as $channel) {
+            if (!is_string($channel) || $channel === '') {
+                return;
+            }
+        }
         $event_data = $data['data'] ?? null;
 
         switch ($type) {
