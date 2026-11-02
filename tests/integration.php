@@ -68,6 +68,7 @@ stream_set_blocking($pipes[1], false);
 stream_set_blocking($pipes[2], false);
 
 $subscriber = null;
+$secondSubscriber = null;
 $publisher = null;
 $queueConsumer = null;
 $malformedClient = null;
@@ -90,11 +91,15 @@ try {
     sendJson($subscriber, ['type' => 'subscribe', 'channels' => ['events']]);
     sendJson($subscriber, ['type' => 'watch', 'channels' => ['jobs']]);
     sendJson($subscriber, ['type' => 'reserve']);
+    $secondSubscriber = connectTo($port);
+    sendJson($secondSubscriber, ['type' => 'subscribe', 'channels' => ['events']]);
 
     $publisher = connectTo($port);
     sendJson($publisher, ['type' => 'publish', 'channels' => ['events'], 'data' => ['ok' => true]]);
     $event = readJson($subscriber);
     expect($event === ['type' => 'event', 'channel' => 'events', 'data' => ['ok' => true]], 'Channel publish delivery failed.');
+    $secondEvent = readJson($secondSubscriber);
+    expect($secondEvent === $event, 'A later channel subscriber received a malformed event.');
 
     $queueConsumer = connectTo($port);
     sendJson($queueConsumer, ['type' => 'enqueue', 'channels' => ['jobs'], 'data' => 'job-1']);
@@ -120,7 +125,7 @@ try {
 
     echo "Tunnel publish, queue, malformed-input and object-deserialization checks passed.\n";
 } finally {
-    foreach ([$subscriber, $publisher, $queueConsumer, $malformedClient] as $socket) {
+    foreach ([$subscriber, $secondSubscriber, $publisher, $queueConsumer, $malformedClient] as $socket) {
         if (is_resource($socket)) {
             fclose($socket);
         }

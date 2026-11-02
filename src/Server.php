@@ -168,9 +168,9 @@ class Server extends ServerAbstract
                     }
                     $buffer = ['type' => 'event', 'channel' => $channel, 'data' => $event_data];
                     foreach ($this->server->channels[$channel] as $connection) {
-                        $buffer = $connection->json ? json_encode($buffer) : serialize($buffer);
-                        $this->debug && LocalzetServer::log("onMessage[$channel]: $buffer >>> $connection->id");
-                        $connection->send($buffer);
+                        $message = $connection->json ? json_encode($buffer) : serialize($buffer);
+                        $this->debug && LocalzetServer::log("onMessage[$channel]: $message >>> $connection->id");
+                        $connection->send($message);
                     }
                 }
                 break;
