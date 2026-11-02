@@ -10,6 +10,9 @@ function expect(bool $condition, string $message): void
     }
 }
 
+$onMessageParameter = (new ReflectionMethod(\localzet\Tunnel\Client::class, 'onMessage'))->getParameters()[0];
+expect(!$onMessageParameter->isPassedByReference(), 'Tunnel async message callback accepts its connection argument normally.');
+
 function connectTo(int $port)
 {
     $socket = stream_socket_client("tcp://127.0.0.1:{$port}", $errorCode, $errorMessage, 3);

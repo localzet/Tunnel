@@ -155,7 +155,7 @@ class Client
      * @return void
      * @throws Exception
      */
-    public static function onMessage(ConnectionInterface &$connection, mixed $request): void
+    public static function onMessage(ConnectionInterface $connection, mixed $request): void
     {
         self::$debug && LocalzetServer::log('onMessage: ' . $request);
         if (!$request) {
