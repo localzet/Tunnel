@@ -8,7 +8,7 @@ A client/server messaging channel for Localzet Server processes.
 
 This library is the suggested replacement for the abandoned localzet/channel package. Substitution is not automatic: verify event API, framing, reconnect, delivery semantics and access controls in every dependent application.
 
-This release targets Server 7.x. PHP object deserialization is disabled by default. To preserve object payloads on a trusted, isolated network, opt in on both ends: pass `allowObjectSerialization: true` as the third `Server` constructor argument and call `Client::allowObjectSerialization()` before connecting. JSON remains supported. Do not enable object deserialization for untrusted peers.
+The current branch targets Server 7.x; the published stable `v2.2.4` requires Server `^4.3`. PHP object deserialization is disabled by default. To preserve object payloads on a trusted, isolated network, opt in on both ends: pass `allowObjectSerialization: true` as the third `Server` constructor argument and call `Client::allowObjectSerialization()` before connecting. Do not enable object deserialization for untrusted peers.
 
 ## Dependencies
 
@@ -18,8 +18,10 @@ This release targets Server 7.x. PHP object deserialization is disabled by defau
 ## Installation
 
 ```sh
-composer require localzet/tunnel
+composer require localzet/tunnel:dev-main
 ```
+
+Use `dev-main` for Server 7; do not pin this branch in production before a compatible stable tag is published.
 
 ## Development checks
 
