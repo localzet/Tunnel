@@ -127,6 +127,9 @@ class Server extends ServerAbstract
         if (!is_array($data) || !isset($data['type']) || !is_string($data['type'])) {
             return;
         }
+        if (!$this->allowObjectSerialization && !SerializationGuard::supports($data)) {
+            return;
+        }
 
         $type = $data['type'];
         $channels = $data['channels'] ?? [];
