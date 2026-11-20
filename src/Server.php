@@ -34,6 +34,8 @@ use Throwable;
 
 class Server extends ServerAbstract
 {
+    private const MAX_QUEUED_MESSAGES = 10_000;
+
     private bool $allowObjectSerialization = false;
     /** @var LocalzetServer */
     private LocalzetServer $server;
@@ -215,6 +217,11 @@ class Server extends ServerAbstract
                 break;
             case 'enqueue':
                 $this->debug && LocalzetServer::log('onMessage <<< enqueue');
+                if ($this->wouldExceedQueueCapacity($channels)) {
+                    $this->debug && LocalzetServer::log('Queue capacity reached; rejecting enqueue.');
+                    break;
+                }
+
                 foreach ($channels as $channel) {
                     if (isset($this->queues[$channel])) {
                         $this->queues[$channel]->enqueue($event_data);
@@ -235,5 +242,24 @@ class Server extends ServerAbstract
                 }
                 break;
         }
+    }
+
+    private function wouldExceedQueueCapacity(array $channels): bool
+    {
+        $pendingCount = 0;
+        foreach ($this->queues as $queue) {
+            $pendingCount += $queue->pendingCount();
+        }
+
+        $messagesPerChannel = array_count_values($channels);
+        foreach ($messagesPerChannel as $channel => $messageCount) {
+            $queue = $this->queues[$channel] ?? null;
+            $queuedBefore = $queue?->pendingCount() ?? 0;
+            $consumers = $queue?->availableConsumerCount() ?? 0;
+            $queuedAfter = max(0, $queuedBefore + $messageCount - $consumers);
+            $pendingCount += $queuedAfter - $queuedBefore;
+        }
+
+        return $pendingCount > self::MAX_QUEUED_MESSAGES;
     }
 }

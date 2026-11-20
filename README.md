@@ -12,7 +12,7 @@ Tunnel is a small TCP message broker for PHP applications built on Localzet Serv
 
 Version 3 targets Localzet Server 7 and PHP 8.1 or newer. The previous 2.x release line targets Server 4 and is not compatible with Server 7. Review the API and delivery differences before migrating an application.
 
-Messages and queues are held in broker memory. Queues are not durable, and delivery is not acknowledged or retried. Run one broker process for a given channel namespace; multiple independent brokers do not share subscriptions or queue state.
+Messages and queues are held in broker memory. Queues are not durable, and delivery is not acknowledged or retried. Each broker process holds at most 10,000 pending queue messages across all channels; an enqueue request that would exceed the limit is rejected as a whole, without an acknowledgement to the sender. Run one broker process for a given channel namespace; multiple independent brokers do not share subscriptions or queue state.
 
 PHP object deserialization is disabled by default. To preserve object payloads on a trusted, isolated network, enable it on both ends: pass `allowObjectSerialization: true` as the third `Server` constructor argument and call `Client::allowObjectSerialization()` before connecting. Never enable object deserialization for untrusted peers.
 
