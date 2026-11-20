@@ -35,6 +35,7 @@ use Throwable;
 class Server extends ServerAbstract
 {
     private const MAX_QUEUED_MESSAGES = 10_000;
+    private const MAX_QUEUED_BYTES = 32 * 1024 * 1024;
 
     private bool $allowObjectSerialization = false;
     /** @var LocalzetServer */
@@ -220,17 +221,17 @@ class Server extends ServerAbstract
                 break;
             case 'enqueue':
                 $this->debug && LocalzetServer::log('onMessage <<< enqueue');
-                if ($this->wouldExceedQueueCapacity($channels)) {
+                if ($this->wouldExceedQueueCapacity($channels, strlen($request))) {
                     $this->debug && LocalzetServer::log('Queue capacity reached; rejecting enqueue.');
                     break;
                 }
 
                 foreach ($channels as $channel) {
                     if (isset($this->queues[$channel])) {
-                        $this->queues[$channel]->enqueue($event_data);
+                        $this->queues[$channel]->enqueue($event_data, strlen($request));
                     } else {
                         $this->debug && LocalzetServer::log("onMessage[$channel]: $event_data >>> $connection->id");
-                        ($this->queues[$channel] = new Queue($channel))->enqueue($event_data);
+                        ($this->queues[$channel] = new Queue($channel))->enqueue($event_data, strlen($request));
                     }
                 }
                 break;
@@ -247,22 +248,27 @@ class Server extends ServerAbstract
         }
     }
 
-    private function wouldExceedQueueCapacity(array $channels): bool
+    private function wouldExceedQueueCapacity(array $channels, int $messageBytes): bool
     {
         $pendingCount = 0;
+        $pendingBytes = 0;
         foreach ($this->queues as $queue) {
             $pendingCount += $queue->pendingCount();
+            $pendingBytes += $queue->pendingBytes();
         }
 
         $messagesPerChannel = array_count_values($channels);
+        $newPendingMessages = 0;
         foreach ($messagesPerChannel as $channel => $messageCount) {
             $queue = $this->queues[$channel] ?? null;
             $queuedBefore = $queue?->pendingCount() ?? 0;
             $consumers = $queue?->availableConsumerCount() ?? 0;
             $queuedAfter = max(0, $queuedBefore + $messageCount - $consumers);
             $pendingCount += $queuedAfter - $queuedBefore;
+            $newPendingMessages += max(0, $queuedAfter - $queuedBefore);
         }
 
-        return $pendingCount > self::MAX_QUEUED_MESSAGES;
+        return $pendingCount > self::MAX_QUEUED_MESSAGES
+            || $pendingBytes + $newPendingMessages * $messageBytes > self::MAX_QUEUED_BYTES;
     }
 }
