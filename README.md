@@ -10,7 +10,7 @@ Tunnel is a small TCP message broker for PHP applications built on Localzet Serv
 
 ## Compatibility
 
-Version 3 targets Localzet Server 7 and PHP 8.1 or newer. The previous 2.x release line targets Server 4 and is not compatible with Server 7. Review the API and delivery differences before migrating an application.
+Version 4 targets Localzet Server 7 and PHP 8.1 or newer. Version 3 also targets Server 7; the older 2.x release line targets Server 4. Version 4 changes the serialized payload contract: PHP objects and recursive arrays are rejected by default. Applications that rely on object payloads must explicitly enable serialization on both peers and use a trusted, isolated network. Version 4 also caps queued request bytes at 32 MiB per broker process.
 
 Messages and queues are held in broker memory. Queues are not durable, and delivery is not acknowledged or retried. Each broker process holds at most 10,000 pending queue messages and 32 MiB of queued request bytes across all channels. An `enqueue` request that would exceed either limit is rejected as a whole, without an acknowledgement to the sender. The byte limit counts each queued copy by the size of its incoming frame. Run one broker process for a given channel namespace; multiple independent brokers do not share subscriptions or queue state.
 
@@ -26,10 +26,10 @@ Tunnel does not provide client authentication or encryption. Bind it to a privat
 ## Installation
 
 ```sh
-composer require localzet/tunnel:^3.0
+composer require localzet/tunnel:^4.0
 ```
 
-Use the 3.x release line with Server 7. The 2.x release line is for Server 4 applications.
+Use the 4.x or 3.x release line with Server 7. Version 4 requires an explicit opt-in for PHP object payloads and adds a 32 MiB queued-byte limit. The 2.x release line is for Server 4 applications.
 
 ## Quick start
 
