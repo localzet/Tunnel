@@ -93,6 +93,16 @@ class Queue
         $this->dispatch();
     }
 
+    public function pendingCount(): int
+    {
+        return $this->queue->count();
+    }
+
+    public function availableConsumerCount(): int
+    {
+        return count($this->consumer);
+    }
+
     /**
      * @return void
      */

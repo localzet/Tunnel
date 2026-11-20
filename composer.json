@@ -32,9 +32,11 @@
   },
   "scripts": {
     "lint": "php tests/lint.php",
+    "test:queue-capacity": "php tests/queue_capacity.php",
     "test:integration": "php tests/integration.php",
     "test": [
       "@lint",
+      "@test:queue-capacity",
       "@test:integration"
     ],
     "check": [
