@@ -103,7 +103,7 @@ class Server extends ServerAbstract
      */
     public function onMessage(ConnectionInterface &$connection, mixed $request): void
     {
-        $this->debug && LocalzetServer::log('onMessage: ' . $request);
+        $this->debug && LocalzetServer::log('onMessage: received request.');
         if (!$request) {
             return;
         }
@@ -120,7 +120,7 @@ class Server extends ServerAbstract
                 $data = @unserialize($request, ['allowed_classes' => $this->allowObjectSerialization]);
                 $connection->json = false;
             } catch (Throwable $exception) {
-                $this->debug && LocalzetServer::log('Throwable: ' . $exception);
+                $this->debug && LocalzetServer::log('Malformed serialized request; ignored.');
                 return;
             }
         }
@@ -175,7 +175,7 @@ class Server extends ServerAbstract
                     $buffer = ['type' => 'event', 'channel' => $channel, 'data' => $event_data];
                     foreach ($this->server->channels[$channel] as $connection) {
                         $message = $connection->json ? json_encode($buffer) : serialize($buffer);
-                        $this->debug && LocalzetServer::log("onMessage[$channel]: $message >>> $connection->id");
+                        $this->debug && LocalzetServer::log("Published message to connection {$connection->id}.");
                         $connection->send($message);
                     }
                 }
@@ -193,7 +193,7 @@ class Server extends ServerAbstract
                         $connection = reset($this->server->channels[$channel]);
                     }
                     $buffer = $connection->json ? json_encode($buffer) : serialize($buffer);
-                    $this->debug && LocalzetServer::log("onMessage[$channel]: $buffer >>> $connection->id");
+                    $this->debug && LocalzetServer::log("Published message to connection {$connection->id}.");
                     $connection->send($buffer);
                 }
                 break;
@@ -230,7 +230,7 @@ class Server extends ServerAbstract
                     if (isset($this->queues[$channel])) {
                         $this->queues[$channel]->enqueue($event_data, strlen($request));
                     } else {
-                        $this->debug && LocalzetServer::log("onMessage[$channel]: $event_data >>> $connection->id");
+                        $this->debug && LocalzetServer::log('Queued message.');
                         ($this->queues[$channel] = new Queue($channel))->enqueue($event_data, strlen($request));
                     }
                 }

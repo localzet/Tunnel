@@ -157,7 +157,7 @@ class Client
      */
     public static function onMessage(ConnectionInterface $connection, mixed $request): void
     {
-        self::$debug && LocalzetServer::log('onMessage: ' . $request);
+        self::$debug && LocalzetServer::log('onMessage: received response.');
         if (!$request) {
             return;
         }
@@ -174,7 +174,7 @@ class Client
                 $data = @unserialize($request, ['allowed_classes' => self::$allowObjectSerialization]);
                 self::$connection->json = false;
             } catch (Throwable $exception) {
-                self::$debug && LocalzetServer::log('Throwable: ' . $exception);
+                self::$debug && LocalzetServer::log('Malformed serialized response; ignored.');
                 return;
             }
         }
