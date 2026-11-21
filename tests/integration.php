@@ -2,6 +2,7 @@
 
 use localzet\Tunnel\Client;
 use localzet\Tunnel\SerializationGuard;
+use localzet\Server as LocalzetServer;
 use localzet\Server\Connection\TcpConnection;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
@@ -78,8 +79,9 @@ $address = stream_socket_get_name($reservation, false);
 $port = (int)substr(strrchr($address, ':'), 1);
 fclose($reservation);
 
+$serverDebugMarker = 'tunnel-server-debug-secret-' . bin2hex(random_bytes(8));
 $process = proc_open(
-    [PHP_BINARY, __DIR__ . '/fixture_server.php', (string)$port],
+    [PHP_BINARY, __DIR__ . '/fixture_server.php', (string)$port, 'debug'],
     [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
     $pipes,
     dirname(__DIR__),
@@ -169,6 +171,30 @@ Client::onMessage($clientConnection, serialize([
 ]));
 expect(count($callbackMessages) === 2 && $callbackMessages[1][1] instanceof IntegrationPayload, 'Tunnel client opt-in must preserve trusted object responses.');
 expect(file_exists($markerPath), 'Trusted Tunnel object response should retain legacy wakeup behavior.');
+
+$debugLogPath = sys_get_temp_dir() . '/tunnel-debug-' . bin2hex(random_bytes(8)) . '.log';
+$clientDebugProperty = new ReflectionProperty(Client::class, 'debug');
+$previousLogFile = LocalzetServer::$logFile;
+$previousDaemonize = LocalzetServer::$daemonize;
+LocalzetServer::$logFile = $debugLogPath;
+LocalzetServer::$daemonize = true;
+$clientDebugProperty->setValue(null, true);
+$clientDebugMarker = 'tunnel-client-debug-secret-' . bin2hex(random_bytes(8));
+try {
+    Client::onMessage($clientConnection, json_encode([
+        'type' => 'event',
+        'channel' => 'security',
+        'data' => $clientDebugMarker,
+    ], JSON_THROW_ON_ERROR));
+} finally {
+    $clientDebugProperty->setValue(null, false);
+    LocalzetServer::$logFile = $previousLogFile;
+    LocalzetServer::$daemonize = $previousDaemonize;
+}
+$clientDebugLog = is_file($debugLogPath) ? (string)file_get_contents($debugLogPath) : '';
+@unlink($debugLogPath);
+expect(!str_contains($clientDebugLog, $clientDebugMarker), 'Tunnel client debug output must omit response payloads.');
+
 @unlink($markerPath);
 Client::allowObjectSerialization(false);
 $clientConnectionProperty->setValue(null, null);
@@ -195,16 +221,16 @@ try {
     sendJson($secondSubscriber, ['type' => 'subscribe', 'channels' => ['events']]);
 
     $publisher = connectTo($port);
-    sendJson($publisher, ['type' => 'publish', 'channels' => ['events'], 'data' => ['ok' => true]]);
+    sendJson($publisher, ['type' => 'publish', 'channels' => ['events'], 'data' => $serverDebugMarker]);
     $event = readJson($subscriber);
-    expect($event === ['type' => 'event', 'channel' => 'events', 'data' => ['ok' => true]], 'Channel publish delivery failed.');
+    expect($event === ['type' => 'event', 'channel' => 'events', 'data' => $serverDebugMarker], 'Channel publish delivery failed.');
     $secondEvent = readJson($secondSubscriber);
     expect($secondEvent === $event, 'A later channel subscriber received a malformed event.');
 
     $queueConsumer = connectTo($port);
-    sendJson($queueConsumer, ['type' => 'enqueue', 'channels' => ['jobs'], 'data' => 'job-1']);
+    sendJson($queueConsumer, ['type' => 'enqueue', 'channels' => ['jobs'], 'data' => $serverDebugMarker]);
     $job = readJson($subscriber);
-    expect($job === ['type' => 'queue', 'channel' => 'jobs', 'data' => 'job-1'], 'Queue reservation delivery failed.');
+    expect($job === ['type' => 'queue', 'channel' => 'jobs', 'data' => $serverDebugMarker], 'Queue reservation delivery failed.');
 
     $malformedClient = connectTo($port);
     sendJson($malformedClient, ['type' => 'publish', 'channels' => [['invalid']], 'data' => 'ignored']);
@@ -239,7 +265,11 @@ try {
     $event = readJson($subscriber);
     expect($event['data'] === 'still-alive', 'Malformed messages disrupted the Tunnel server.');
 
-    echo "Tunnel publish, queue, malformed-input and serialization-guard checks passed.\n";
+    usleep(100_000);
+    $serverDebugLog = (string)stream_get_contents($pipes[1]) . (string)stream_get_contents($pipes[2]);
+    expect(!str_contains($serverDebugLog, $serverDebugMarker), 'Tunnel server debug output must omit request and message payloads.');
+
+    echo "Tunnel publish, queue, malformed-input, serialization-guard and debug-redaction checks passed.\n";
 } finally {
     foreach ([$subscriber, $secondSubscriber, $publisher, $queueConsumer, $malformedClient] as $socket) {
         if (is_resource($socket)) {
