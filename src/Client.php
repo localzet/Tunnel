@@ -187,6 +187,9 @@ class Client
         ) {
             return;
         }
+        if (!self::$allowObjectSerialization && !SerializationGuard::supports($data)) {
+            return;
+        }
 
         $type = $data['type'];
         $event = $data['channel'];
@@ -421,6 +424,7 @@ class Client
             throw new Exception("Метод {$data['type']} не поддерживается вне среды Localzet Server");
         }
 
+        self::assertSupportedPayload($data);
         self::connect(self::$socketName);
         self::$connection->send(self::$connection->json ? json_encode($data) : serialize($data));
     }
@@ -431,12 +435,25 @@ class Client
      */
     protected static function sendAnyway($data): void
     {
+        self::assertSupportedPayload($data);
         self::connect(self::$socketName);
         $body = self::$connection->json ? json_encode($data) : serialize($data);
         if (self::$isServerEnv) {
             self::$connection->send($body);
         } else {
             fwrite(self::$connection, self::$protocol::encode($body));
+        }
+    }
+
+    private static function assertSupportedPayload(array $data): void
+    {
+        $jsonTransport = is_object(self::$connection) && (bool)(self::$connection->json ?? false);
+
+        if (!self::$allowObjectSerialization
+            && !$jsonTransport
+            && !SerializationGuard::supports($data)
+        ) {
+            throw new \InvalidArgumentException('Tunnel payload must contain only scalars and acyclic arrays.');
         }
     }
 }

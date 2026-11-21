@@ -43,6 +43,8 @@ class Queue
     /** @var SplQueue|null */
     protected ?SplQueue $queue = null;
 
+    private int $pendingBytes = 0;
+
     /** @param $name */
     public function __construct($name)
     {
@@ -87,15 +89,21 @@ class Queue
      * @param $data
      * @return void
      */
-    public function enqueue($data): void
+    public function enqueue($data, int $size = 0): void
     {
-        $this->queue->enqueue($data);
+        $this->queue->enqueue(['data' => $data, 'size' => $size]);
+        $this->pendingBytes += $size;
         $this->dispatch();
     }
 
     public function pendingCount(): int
     {
         return $this->queue->count();
+    }
+
+    public function pendingBytes(): int
+    {
+        return $this->pendingBytes;
     }
 
     public function availableConsumerCount(): int
@@ -113,11 +121,12 @@ class Queue
         }
 
         while (!$this->queue->isEmpty()) {
-            $data = $this->queue->dequeue();
+            $item = $this->queue->dequeue();
+            $this->pendingBytes -= $item['size'];
             $idx = key($this->consumer);
             $connection = $this->consumer[$idx];
             unset($this->consumer[$idx]);
-            $buffer = ['type' => 'queue', 'channel' => $this->name, 'data' => $data];
+            $buffer = ['type' => 'queue', 'channel' => $this->name, 'data' => $item['data']];
             $connection->send($connection->json ? json_encode($buffer) : serialize($buffer));
             if (count($this->consumer) == 0) {
                 break;

@@ -1,7 +1,27 @@
 <?php declare(strict_types=1);
 
+use localzet\Tunnel\Client;
+use localzet\Tunnel\SerializationGuard;
+use localzet\Server\Connection\TcpConnection;
+
 require dirname(__DIR__) . '/vendor/autoload.php';
 require __DIR__ . '/IntegrationPayload.php';
+
+final class TunnelClientProbe extends TcpConnection
+{
+    public bool $json = false;
+    public array $sent = [];
+
+    public function __construct() {}
+
+    public function send(mixed $data, bool $raw = false): ?bool
+    {
+        $this->sent[] = $data;
+        return true;
+    }
+
+    public function __destruct() {}
+}
 
 function expect(bool $condition, string $message): void
 {
@@ -77,6 +97,83 @@ $queueConsumer = null;
 $malformedClient = null;
 $markerPath = sys_get_temp_dir() . '/tunnel-unserialize-' . bin2hex(random_bytes(8));
 
+$acyclicPayload = ['id' => 7, 'data' => ['ready' => true, 'optional' => null]];
+expect(SerializationGuard::supports($acyclicPayload), 'Scalar and nested-array payloads must remain supported.');
+expect(!SerializationGuard::supports(['nested' => new IntegrationPayload($markerPath)]), 'Nested PHP object payloads must be rejected.');
+$cyclicPayload = [];
+$cyclicPayload['self'] =& $cyclicPayload;
+expect(!SerializationGuard::supports($cyclicPayload), 'Recursive arrays must be rejected without recursive traversal.');
+
+$callbackMessages = [];
+Client::$onMessage = static function (string $channel, mixed $data) use (&$callbackMessages): void {
+    $callbackMessages[] = [$channel, $data];
+};
+$sendAnyway = new ReflectionMethod(Client::class, 'sendAnyway');
+$sendAnyway->setAccessible(true);
+$sendRejected = false;
+try {
+    $sendAnyway->invoke(null, [
+        'type' => 'publish',
+        'channels' => ['security'],
+        'data' => new IntegrationPayload($markerPath),
+    ]);
+} catch (InvalidArgumentException) {
+    $sendRejected = true;
+}
+expect($sendRejected, 'Tunnel client must reject outgoing objects before opening a connection.');
+
+$clientConnection = new TunnelClientProbe();
+$clientConnectionProperty = new ReflectionProperty(Client::class, 'connection');
+$clientConnectionProperty->setAccessible(true);
+$clientConnectionProperty->setValue(null, $clientConnection);
+$untrustedClientPayload = serialize([
+    'type' => 'event',
+    'channel' => 'security',
+    'data' => ['nested' => new IntegrationPayload($markerPath)],
+]);
+Client::allowObjectSerialization(false);
+Client::onMessage($clientConnection, $untrustedClientPayload);
+expect($callbackMessages === [] && !file_exists($markerPath), 'Tunnel client must reject nested object responses before dispatch.');
+
+$sendRejected = false;
+try {
+    $sendAnyway->invoke(null, [
+        'type' => 'publish',
+        'channels' => ['security'],
+        'data' => new IntegrationPayload($markerPath),
+    ]);
+} catch (InvalidArgumentException) {
+    $sendRejected = true;
+}
+expect($sendRejected && $clientConnection->sent === [], 'Tunnel client must reject outgoing objects without opt-in.');
+
+Client::onMessage($clientConnection, serialize([
+    'type' => 'event',
+    'channel' => 'plain',
+    'data' => $acyclicPayload,
+]));
+expect($callbackMessages === [['plain', $acyclicPayload]], 'Tunnel client must deliver scalar and nested-array responses.');
+
+Client::allowObjectSerialization(true);
+$sendAnyway->invoke(null, [
+    'type' => 'publish',
+    'channels' => ['trusted'],
+    'data' => new IntegrationPayload($markerPath),
+]);
+expect(count($clientConnection->sent) === 1 && is_string($clientConnection->sent[0]), 'Tunnel client opt-in must retain legacy object serialization.');
+$clientConnection->sent = [];
+Client::onMessage($clientConnection, serialize([
+    'type' => 'event',
+    'channel' => 'trusted',
+    'data' => new IntegrationPayload($markerPath),
+]));
+expect(count($callbackMessages) === 2 && $callbackMessages[1][1] instanceof IntegrationPayload, 'Tunnel client opt-in must preserve trusted object responses.');
+expect(file_exists($markerPath), 'Trusted Tunnel object response should retain legacy wakeup behavior.');
+@unlink($markerPath);
+Client::allowObjectSerialization(false);
+$clientConnectionProperty->setValue(null, null);
+Client::$onMessage = null;
+
 try {
     $deadline = microtime(true) + 8;
     do {
@@ -113,12 +210,28 @@ try {
     sendJson($malformedClient, ['type' => 'publish', 'channels' => [['invalid']], 'data' => 'ignored']);
     $invalidPayload = 'not-json';
     fwrite($malformedClient, pack('N', strlen($invalidPayload)) . $invalidPayload);
-    $serializedPayload = serialize([
-        'type' => 'invalid',
-        'channels' => [],
-        'data' => new IntegrationPayload($markerPath),
+    $serializedPayloads = [
+        serialize([
+            'type' => 'publish',
+            'channels' => ['events'],
+            'data' => new IntegrationPayload($markerPath),
+        ]),
+        serialize([
+            'type' => 'publish',
+            'channels' => ['events'],
+            'data' => ['nested' => new IntegrationPayload($markerPath)],
+        ]),
+    ];
+    $cyclicData = [];
+    $cyclicData['self'] =& $cyclicData;
+    $serializedPayloads[] = serialize([
+        'type' => 'publish',
+        'channels' => ['events'],
+        'data' => $cyclicData,
     ]);
-    fwrite($malformedClient, pack('N', strlen($serializedPayload)) . $serializedPayload);
+    foreach ($serializedPayloads as $serializedPayload) {
+        fwrite($malformedClient, pack('N', strlen($serializedPayload)) . $serializedPayload);
+    }
     usleep(100_000);
     expect(!file_exists($markerPath), 'Untrusted serialized object executed __wakeup().');
 
@@ -126,7 +239,7 @@ try {
     $event = readJson($subscriber);
     expect($event['data'] === 'still-alive', 'Malformed messages disrupted the Tunnel server.');
 
-    echo "Tunnel publish, queue, malformed-input and object-deserialization checks passed.\n";
+    echo "Tunnel publish, queue, malformed-input and serialization-guard checks passed.\n";
 } finally {
     foreach ([$subscriber, $secondSubscriber, $publisher, $queueConsumer, $malformedClient] as $socket) {
         if (is_resource($socket)) {

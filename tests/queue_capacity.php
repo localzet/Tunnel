@@ -57,6 +57,19 @@ $server->onMessage($connection, json_encode([
 $queues = $queuesProperty->getValue($server);
 expectCapacity(!isset($queues['audit']), 'The process-wide limit must reject an enqueue on another channel.');
 
+$byteLimit = (new ReflectionClass(Server::class))->getReflectionConstant('MAX_QUEUED_BYTES')->getValue();
+$byteLimitServer = new Server();
+$byteQueue = new localzet\Tunnel\Queue('byte-limit');
+$byteQueue->enqueue('existing', $byteLimit - 1);
+$queuesProperty->setValue($byteLimitServer, ['byte-limit' => $byteQueue]);
+$byteLimitServer->onMessage($connection, json_encode([
+    'type' => 'enqueue',
+    'channels' => ['byte-limit'],
+    'data' => 'overflow',
+], JSON_THROW_ON_ERROR));
+$queues = $queuesProperty->getValue($byteLimitServer);
+expectCapacity($queues['byte-limit']->pendingCount() === 1, 'The process-wide byte limit must reject an enqueue that exceeds 32 MiB.');
+
 $server->onMessage($connection, json_encode([
     'type' => 'watch',
     'channels' => ['jobs'],
@@ -65,6 +78,7 @@ for ($i = 0; $i < 10_000; $i++) {
     $server->onMessage($connection, json_encode(['type' => 'reserve'], JSON_THROW_ON_ERROR));
 }
 expectCapacity($jobs->pendingCount() === 0, 'Reserving should drain queued messages and release capacity.');
+expectCapacity($jobs->pendingBytes() === 0, 'Dispatch must release queued bytes.');
 
 $server->onMessage($connection, json_encode([
     'type' => 'unwatch',
