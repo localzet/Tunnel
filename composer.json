@@ -28,7 +28,7 @@
   },
   "require": {
     "php": ">=8.1",
-    "localzet/server": "^7.0"
+    "localzet/server": "^7.2.3"
   },
   "scripts": {
     "lint": "php tests/lint.php",

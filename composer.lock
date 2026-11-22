@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "2d30a71265175fb9081f81b7a18ef092",
+    "content-hash": "0dbce638f4c6d24827c296db8d0931e3",
     "packages": [
         {
             "name": "localzet/server",
